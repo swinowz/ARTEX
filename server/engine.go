@@ -162,9 +162,10 @@ type Engine struct {
 }
 
 type taskRuntime struct {
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-	wg     sync.WaitGroup
+	ctx     context.Context
+	cancel  context.CancelCauseFunc
+	wg      sync.WaitGroup
+	workers int // current number of worker loops (work#1..work#N); guarded by runtimeMu (ADR-0005)
 }
 
 type workExecution struct {
@@ -229,7 +230,7 @@ func (e *Engine) IsDeleting(taskID string) bool {
 
 // registerTaskRoutines reserves count goroutines in the task runtime. Callers
 // hold deleteMu for reading so StopTask cannot race WaitGroup.Add with Wait.
-func (e *Engine) registerTaskRoutines(parent context.Context, taskID string, count int) *taskRuntime {
+func (e *Engine) registerTaskRoutines(parent context.Context, taskID string, count, workers int) *taskRuntime {
 	e.runtimeMu.Lock()
 	defer e.runtimeMu.Unlock()
 	if e.draining {
@@ -242,7 +243,58 @@ func (e *Engine) registerTaskRoutines(parent context.Context, taskID string, cou
 		e.runtimes[taskID] = rt
 	}
 	rt.wg.Add(count)
+	if workers > 0 {
+		// Worker-loop count this start launches; hot scaling reads/updates it (ADR-0005).
+		// Callers that register unrelated routines (e.g. the deadline coordinator) pass 0
+		// so they never clobber the count.
+		rt.workers = workers
+	}
 	return rt
+}
+
+// scaleWorkerNames returns the names of the worker loops to start to grow a task from
+// current to target loops (empty when target <= current). It mirrors Engine.Run's
+// scheme (work#1..work#N) so a scaled loop never collides with a running one (#32).
+func scaleWorkerNames(current, target int) []string {
+	if target <= current {
+		return nil
+	}
+	names := make([]string, 0, target-current)
+	for i := current + 1; i <= target; i++ {
+		names = append(names, fmt.Sprintf("work#%d", i))
+	}
+	return names
+}
+
+// ScaleWorkers adds worker loops to an already-running task so a raised concurrency
+// takes effect without recreating the task (ADR-0005, #32). target<1 clamps to 1. It
+// never removes loops: target <= current is a no-op. Returns how many loops were added,
+// the new total, and whether the task was running (false => caller should start it).
+func (e *Engine) ScaleWorkers(t *Task, target int) (added, total int, running bool) {
+	if target < 1 {
+		target = 1
+	}
+	e.runtimeMu.Lock()
+	rt := e.runtimes[t.ID]
+	if rt == nil || e.draining {
+		e.runtimeMu.Unlock()
+		return 0, 0, false
+	}
+	names := scaleWorkerNames(rt.workers, target)
+	if len(names) == 0 {
+		cur := rt.workers
+		e.runtimeMu.Unlock()
+		return 0, cur, true
+	}
+	rt.wg.Add(len(names))
+	rt.workers = target
+	e.runtimeMu.Unlock()
+	for _, name := range names {
+		n := name
+		runTaskRoutine(rt, func(loopCtx context.Context) { e.workerLoop(loopCtx, t, n) })
+	}
+	t.Notify() // nudge the planner to open intents for the new slots
+	return len(names), target, true
 }
 
 func runTaskRoutine(rt *taskRuntime, fn func(context.Context)) {
@@ -844,7 +896,7 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 		t.Notify() // already running — just nudge a planning round
 		return
 	}
-	rt := e.registerTaskRoutines(ctx, t.ID, 2+workers)
+	rt := e.registerTaskRoutines(ctx, t.ID, 2+workers, workers)
 	e.deleteMu.RUnlock()
 	if rt == nil {
 		e.started.Delete(t.ID)

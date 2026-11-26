@@ -177,7 +177,7 @@ func (e *Engine) startDeadlineCoordinator(ctx context.Context, t *Task) {
 		e.deleteMu.RUnlock()
 		return
 	}
-	rt := e.registerTaskRoutines(ctx, t.ID, 1)
+	rt := e.registerTaskRoutines(ctx, t.ID, 1, 0)
 	e.deleteMu.RUnlock()
 	if rt == nil {
 		e.coordStarted.Delete(t.ID)

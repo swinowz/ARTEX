@@ -187,7 +187,7 @@ func TestStopTaskCancelsRuntimeAndClearsLifecycleState(t *testing.T) {
 	e := NewEngine(nil)
 	const taskID = "42"
 	e.deleteMu.RLock()
-	rt := e.registerTaskRoutines(context.Background(), taskID, 1)
+	rt := e.registerTaskRoutines(context.Background(), taskID, 1, 0)
 	e.started.Store(taskID, true)
 	e.lastAct.Store(taskID, int64(1))
 	e.paused.Store(taskID, true)

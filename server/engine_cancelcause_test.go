@@ -45,7 +45,7 @@ func TestWaitBlocksUntilDetachedInflightEnds(t *testing.T) {
 
 func TestWaitCancelsRuntimeWithShutdown(t *testing.T) {
 	e := NewEngine(nil)
-	rt := e.registerTaskRoutines(context.Background(), "t1", 1)
+	rt := e.registerTaskRoutines(context.Background(), "t1", 1, 0)
 	if rt == nil {
 		t.Fatal("runtime was not registered")
 	}
