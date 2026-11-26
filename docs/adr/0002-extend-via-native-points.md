@@ -1,12 +1,13 @@
-# ADR-0002: Prefer native extension points, but changing the core is allowed
+# ADR-0002: This is a fork — change the core freely; extension points are just a convenience
 
 Status: accepted (2026-11-26), revised (2026-11-26)
 
 ## Context
 The goal is a general pentest platform built on ARTEX. An earlier draft of this ADR
 copied a "zero core change" rule from the GPT framing document. The operator never
-asked for that rule and has explicitly rejected it: modifying ARTEX's core is allowed
-and expected.
+asked for that rule and has rejected it twice: it is a fork, there is no concern about
+staying mergeable with upstream, and the aim is simply to improve ARTEX as much as
+possible. Modifying the core is fully expected.
 
 ## Decision
 Modifying the core (engine, planner, worker loops, graphs, Reporter, persistence,
@@ -26,11 +27,14 @@ Native extension points, when they fit:
 3. agent profiles (today the planner dispatches only to the literal `"worker"` key; a
    real profile selector is a core change, tracked in #26).
 
-## Discipline (traceability, not permission)
-- Record a significant core change in an ADR: what changed, why the extension points did
-  not fit, which files. This is for the next agent to understand the design, not a gate.
-- Keep the change focused and tested so upstream merges from `BaaRai/ARTEX` stay feasible
-  where we still want them. We may also diverge permanently where it serves the goal.
+## This is a fork — diverge freely
+There is no goal of staying mergeable with upstream (`BaaRai/ARTEX`). This fork exists to
+become the best possible ARTEX for a general pentest platform; rewrite the core wherever
+that serves the goal.
+
+The only discipline kept: record a significant core change in an ADR (what changed, why,
+which files) so the next agent understands the design. This is the project's own tracking
+(issues + ADR), not an upstream constraint and not an approval gate.
 
 ## Verified facts (2026-11-26, commit 3cb0638)
 - `SkillDir()` precedence is as above (`config/config.go`).
