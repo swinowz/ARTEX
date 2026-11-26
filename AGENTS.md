@@ -57,5 +57,5 @@ Dev loop: see `scripts/dev-watch.sh` (backend hot reload) and `dev.sh` (frontend
 
 ## Licence
 
-LICENSE is AGPL-3.0. Before copying code from another project, check its licence
-and record the decision in an ADR (see ADR-0003).
+LICENSE is AGPL-3.0 (personal project, no licence review required). Keep the
+LICENSE file and copyright headers intact when copying code from elsewhere.
