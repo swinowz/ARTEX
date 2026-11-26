@@ -148,9 +148,67 @@ func (s *Server) assessFindingVerification(ctx context.Context, findingID int64,
 			proofs = append(proofs, b)
 		}
 	}
-	if len(proofs) == 0 {
+	// Non-HTTP proof: captured command/tool output bound to the finding (ADR-0004).
+	cmdEvidence, err := s.m.pg.ListFindingCommandEvidence(findingID)
+	if err != nil {
+		return db.VerificationNotAssessed, "command evidence read error: " + err.Error()
+	}
+	var cmdProofs []db.FindingCommandEvidence
+	for _, e := range cmdEvidence {
+		if e.Role == "proof" || e.Role == "verification" {
+			cmdProofs = append(cmdProofs, e)
+		}
+	}
+	if len(proofs) == 0 && len(cmdProofs) == 0 {
 		return db.VerificationUnverified, "no proof traffic bound"
 	}
+	store := s.evidenceStore()
+	bodies := make([]boundBody, 0, len(proofs)+len(cmdProofs))
+	for _, b := range proofs {
+		bb, err := readBoundResponse(store, b.Snapshot)
+		if err != nil {
+			// Fail closed: an unreadable body is never an "unverified" verdict.
+			return db.VerificationNotAssessed, "evidence body unreadable: " + err.Error()
+		}
+		bodies = append(bodies, bb)
+	}
+	for _, e := range cmdProofs {
+		bodies = append(bodies, commandEvidenceBody(e))
+	}
+	return evaluateEvidence(poe, quotes, bodies)
+}
+
+// commandEvidenceBody turns stored command/tool output into a boundBody using the
+// same read-cap / non-text / truncated semantics as readBoundResponse, so the
+// verification rules are identical across HTTP and command evidence (ADR-0004).
+func commandEvidenceBody(e db.FindingCommandEvidence) boundBody {
+	raw := []byte(e.Content)
+	bb := boundBody{truncated: e.Truncated}
+	if len(raw) > verificationReadCap {
+		bb.truncated = true
+		raw = raw[:verificationReadCap]
+		// The cap may cut a multi-byte rune: drop at most UTFMax-1 trailing bytes.
+		for i := 0; i < utf8.UTFMax-1 && !utf8.Valid(raw) && len(raw) > 0; i++ {
+			raw = raw[:len(raw)-1]
+		}
+	}
+	if bytes.IndexByte(raw, 0) >= 0 || !utf8.Valid(raw) {
+		bb.nonText = true
+		return bb
+	}
+	bb.text = normalizeEvidenceText(string(raw))
+	return bb
+}
+
+// evaluateEvidence applies the S1 verification rules to already-read evidence
+// bodies, independent of where they came from — an HTTP response body today, or a
+// captured command/tool output once the non-HTTP path lands (ADR-0004, #8). It
+// never returns "verified" unless every rule passes: POE >= L3, at least one quote
+// long enough, and every quote found verbatim (after whitespace normalization) in
+// some readable body. A miss over non-text or truncated bodies fails closed to
+// not_assessed rather than claiming unverified. The caller is responsible for the
+// "no proof bound" check and for reading the bodies (read errors -> not_assessed).
+func evaluateEvidence(poe int, quotes []string, bodies []boundBody) (status, note string) {
 	if poe < verificationMinPOE {
 		return db.VerificationUnverified, fmt.Sprintf("POE L%d below L3", poe)
 	}
@@ -165,16 +223,6 @@ func (s *Server) assessFindingVerification(ctx context.Context, findingID int64,
 	}
 	if len(checked) == 0 {
 		return db.VerificationUnverified, "evidence quote too short"
-	}
-	store := s.evidenceStore()
-	bodies := make([]boundBody, 0, len(proofs))
-	for _, b := range proofs {
-		bb, err := readBoundResponse(store, b.Snapshot)
-		if err != nil {
-			// Fail closed: an unreadable body is never an "unverified" verdict.
-			return db.VerificationNotAssessed, "evidence body unreadable: " + err.Error()
-		}
-		bodies = append(bodies, bb)
 	}
 	for _, q := range checked {
 		nq := normalizeEvidenceText(q)
