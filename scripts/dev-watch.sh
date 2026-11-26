@@ -17,7 +17,8 @@ stamp() { find . \( -path ./web -o -path ./.git -o -path ./node_modules \) -prun
 
 start() {
   echo "[dev-watch] building…"
-  if go build -o "$BIN" ./cmd/artex; then
+  # -buildvcs=false: a git worktree or shallow clone can fail VCS stamping (git exit 128).
+  if go build -buildvcs=false -o "$BIN" ./cmd/artex; then
     "$BIN" -addr "$ADDR" &
     PID=$!
     echo "[dev-watch] backend pid $PID on http://$ADDR"
