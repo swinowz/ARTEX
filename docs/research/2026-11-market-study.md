@@ -57,3 +57,35 @@ console web + MCP hot-swap + graphes de findings **tous en cœur ouvert et vivan
 - Détecteur de boucle / mentor / reflector dédiés (#35).
 - Vérification de finding non-HTTP (#8).
 - Confinement d'egress au point de sortie + audit haché (#36).
+
+## Sentiment communauté (2025-2026)
+
+Classement par notoriété (étoiles = signal, pas qualité) :
+1. **Strix** ~77k — le plus étoilé, hype positive.
+2. **PentAGI** ~35k — forte croissance, UI web.
+3. **HexStrike** ~14k — positif mais dépôt jugé dormant.
+4. **CAI** ~10k — archivé 2026-08, prudence.
+5. **PentestGPT** — pionnier, vieillissant.
+6. **Zen-AI-Pentest** — multi-agent par phase + CLI/API/web : **conceptuellement le plus proche d'ARTEX**, récent, à surveiller (non audité en profondeur ici).
+7. **Villager** (Cyberspike) — « successeur IA de Cobalt Strike », **alarme dual-use**.
+8. Shannon / Decepticon / RedAmon — récents, surtout du hype, peu de retours indépendants.
+9. **hackingBuddyGPT** — académique sérieux (priv-esc Linux), human-in-the-loop.
+10. Nebula (assistant, maintenance douteuse), BurpGPT (Community abandonné).
+Commerciaux cités comme références : XBOW (benchmark 90,1% pass@1), Horizon3 NodeZero, Pentera.
+
+### Critiques récurrentes — à prendre comme cahier des charges
+- **Faux positifs / findings hallucinés = frustration n°1** (sondage 158 praticiens : ~30%, devant le coût ; le taux de FP est le 1er critère d'achat à 63% ; 1/4 des praticiens retravaillent >25% des findings).
+- **8/13 frameworks open-source déclarent un succès sans atteindre la vraie vuln** ; des agents de code génériques battent la plupart des frameworks dédiés.
+- Agents ~32% de fausses soumissions vs <3% pour les humains (source primaire non vérifiée).
+- Bruit de masse, dual-use, dépôts dormants/archivés, étoiles ≠ qualité.
+
+**Implication pour ARTEX** : le plus fort levier de différenciation n'est pas « plus d'outils » mais **la rigueur de preuve** — vérification de finding ancrée sur une preuve rejouable (#8), et refus qu'un modèle décrète seul `verified` (comme Strix et ptai). C'est ce qui attaque directement la frustration n°1 du marché.
+
+### Réutilisabilité des gros catalogues d'outils en MCP
+- **HexStrike 150+** : directement branchable comme serveur MCP unique (stdio/HTTP).
+- **Bolt 100+ / mcp-vanguard 89 / Darkmoon 80+** : même pattern probable, **non vérifiés** (à confirmer par dépôt).
+- Réserve : un gros catalogue gonfle le contexte d'outils du LLM (coût tokens) → prévoir namespacing + filtrage + dédup avec les outils web déjà dans ARTEX.
+- Manques communs à combler pour une cible red-team : **WiFi** et **C2** quasi absents partout ; **AD** souvent partiel.
+
+### Note
+ARTEX est cité comme repère dans la presse sécu (Unit 42, GitGuardian) — identité du même ARTEX non confirmée à 100%. Projets non indexés à vérifier si besoin : Darkmoon, Cairn, VulnClaw, pwner.
