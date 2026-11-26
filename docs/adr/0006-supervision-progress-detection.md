@@ -1,6 +1,6 @@
 # ADR-0006: Supervision — deterministic no-progress detection
 
-Status: proposed (2026-11-26) — #35
+Status: accepted (2026-11-26) — #35. Decision: advisory (operator chose option (a)); the hard guard (b) stays an opt-in setting for a later increment.
 
 ## Context
 #35 proposes importing PentAGI's supervision triad (Adviser / Planner / Reflector).
