@@ -9,9 +9,12 @@ PostgreSQL). This fork is the working base for a general pentest solution: web f
 then network, Wi-Fi, Active Directory, Entra ID, pivoting, C2, reverse engineering.
 Target use: **authorized** engagements and labs only.
 
-Extensions must go through ARTEX's native extension points (MCP servers, skills,
-agent profiles). Changes to the core (engine, planner, worker loops, graphs, Reporter,
-persistence, console) are exceptional and must be justified in an ADR first.
+Changing ARTEX's core (engine, planner, worker loops, graphs, Reporter, persistence,
+console) is allowed and expected — there is no rule against it and no approval gate.
+Prefer a native extension point (MCP server, skill, agent profile) when it fits cleanly,
+because it is usually less work and stays isolated; otherwise change the core. Record a
+significant core change in an ADR so the next agent understands the design (traceability,
+not permission). See ADR-0002.
 
 ## Where work is tracked
 
