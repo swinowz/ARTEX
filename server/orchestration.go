@@ -455,7 +455,12 @@ func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 			"report":           strParam("full report text, Markdown format"),
 			"evidence_version": map[string]any{"type": "integer", "description": "evidence version returned by get_finding_traffic; prevents the report from overwriting newer evidence changes"},
 			"poe_level":        map[string]any{"type": "integer", "description": "proof-of-exploitation level 0-4: 1 error/timing/response variation, 2 structural manipulation, 3 actual data extracted, 4 critical impact. L3 is the minimum for verified. Omit or 0 when not proven."},
-			"evidence_quotes":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "exact lines copied from a bound proof/verification response body (get_finding_traffic). Never from memory; the server checks each one verbatim after whitespace normalization."},
+			"evidence_quotes":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "exact lines copied from a bound proof/verification response body (get_finding_traffic) OR from a command_evidence output below. Never from memory; the server checks each one verbatim after whitespace normalization."},
+			"command_evidence": map[string]any{"type": "array", "description": "non-HTTP proof: the exact output of a command/tool that proves this finding (e.g. nmap, netexec, impacket). Use for AD/network/wifi/C2/binary findings that have no HTTP traffic. evidence_quotes are checked verbatim against this output.", "items": objSchema(map[string]any{
+				"role":    map[string]any{"type": "string", "enum": []any{"proof", "verification", "supporting", "baseline"}, "description": "proof or verification counts toward verified; supporting/baseline do not"},
+				"command": strParam("the command line that produced the output (for the record)"),
+				"content": strParam("the exact captured output; quotes are matched against this text"),
+			}, "content")},
 		}, "finding_id", "report"),
 		func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
 			var a struct {
@@ -464,6 +469,11 @@ func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 				Report          string          `json:"report"`
 				PoELevel        *int            `json:"poe_level"`
 				EvidenceQuotes  []string        `json:"evidence_quotes"`
+				CommandEvidence []struct {
+					Role    string `json:"role"`
+					Command string `json:"command"`
+					Content string `json:"content"`
+				} `json:"command_evidence"`
 			}
 			_ = json.Unmarshal(in, &a)
 			nodeID := parseProfileID(a.FindingID) // reuses the "number or numeric string" parser
@@ -492,6 +502,25 @@ func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 			if n == 0 {
 				return notFound, nil
 			}
+			// Non-HTTP proof: persist any command/tool output so verification can match
+			// quotes against it (ADR-0004, #8). Content is capped at the verification read
+			// cap; the rune-boundary trim happens when it is read back.
+			for i, ce := range a.CommandEvidence {
+				role := strings.TrimSpace(ce.Role)
+				if role == "" {
+					role = "proof"
+				}
+				if !db.ValidCommandEvidenceRole(role) {
+					return actool.Errorf(fmt.Sprintf("command_evidence[%d]: invalid role %q (want proof|verification|supporting|baseline)", i, ce.Role)), nil
+				}
+				content, truncated := ce.Content, false
+				if len(content) > verificationReadCap {
+					content, truncated = content[:verificationReadCap], true
+				}
+				if _, err := s.m.pg.AddFindingCommandEvidence(findingID, role, ce.Command, content, truncated); err != nil {
+					return actool.Errorf("report saved, but command evidence not stored: " + err.Error()), nil
+				}
+			}
 			// The report is saved above; verification only decides the status. A
 			// downgrade is recorded and reported, never used to drop the report.
 			status, note := s.assessFindingVerification(ctx, findingID, poe, a.EvidenceQuotes)
@@ -502,7 +531,7 @@ func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 			if status == db.VerificationVerified {
 				msg += fmt.Sprintf(" (POE L%d)", poe)
 			} else {
-				msg += " - " + note + "\nwarning: the report is saved but the finding is not verified. To reach verified, declare poe_level 3 or 4 and pass exact quotes copied from a bound proof/verification response body."
+				msg += " - " + note + "\nwarning: the report is saved but the finding is not verified. To reach verified, declare poe_level 3 or 4 and pass exact quotes copied from a bound proof/verification response body, or from a command_evidence output for non-HTTP findings."
 			}
 			return actool.Text(msg), nil
 		})

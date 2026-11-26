@@ -1296,6 +1296,22 @@ CREATE TABLE IF NOT EXISTS finding_traffic_bindings (
 CREATE INDEX IF NOT EXISTS idx_finding_traffic_order ON finding_traffic_bindings(finding_id, position, id);
 CREATE INDEX IF NOT EXISTS idx_finding_traffic_snapshot ON finding_traffic_bindings(snapshot_id);
 
+-- Non-HTTP proof: captured command/tool output bound to a finding (ADR-0004, #8).
+-- Verified the same way as HTTP bodies (POE >= L3 + verbatim quote), but the proof
+-- is the exact tool output instead of an HTTP response body. content is stored
+-- already capped at the verification read cap; truncated records that a cut happened.
+CREATE TABLE IF NOT EXISTS finding_command_evidence (
+    id BIGSERIAL PRIMARY KEY,
+    finding_id BIGINT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+    role TEXT NOT NULL DEFAULT 'supporting',
+    command TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL,
+    truncated BOOLEAN NOT NULL DEFAULT FALSE,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_finding_command_evidence_finding ON finding_command_evidence(finding_id, position, id);
+
 -- =====================================================================
 -- M. Backend log persistence
 -- =====================================================================
