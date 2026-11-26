@@ -151,6 +151,28 @@ func (s *Server) assessFindingVerification(ctx context.Context, findingID int64,
 	if len(proofs) == 0 {
 		return db.VerificationUnverified, "no proof traffic bound"
 	}
+	store := s.evidenceStore()
+	bodies := make([]boundBody, 0, len(proofs))
+	for _, b := range proofs {
+		bb, err := readBoundResponse(store, b.Snapshot)
+		if err != nil {
+			// Fail closed: an unreadable body is never an "unverified" verdict.
+			return db.VerificationNotAssessed, "evidence body unreadable: " + err.Error()
+		}
+		bodies = append(bodies, bb)
+	}
+	return evaluateEvidence(poe, quotes, bodies)
+}
+
+// evaluateEvidence applies the S1 verification rules to already-read evidence
+// bodies, independent of where they came from — an HTTP response body today, or a
+// captured command/tool output once the non-HTTP path lands (ADR-0004, #8). It
+// never returns "verified" unless every rule passes: POE >= L3, at least one quote
+// long enough, and every quote found verbatim (after whitespace normalization) in
+// some readable body. A miss over non-text or truncated bodies fails closed to
+// not_assessed rather than claiming unverified. The caller is responsible for the
+// "no proof bound" check and for reading the bodies (read errors -> not_assessed).
+func evaluateEvidence(poe int, quotes []string, bodies []boundBody) (status, note string) {
 	if poe < verificationMinPOE {
 		return db.VerificationUnverified, fmt.Sprintf("POE L%d below L3", poe)
 	}
@@ -165,16 +187,6 @@ func (s *Server) assessFindingVerification(ctx context.Context, findingID int64,
 	}
 	if len(checked) == 0 {
 		return db.VerificationUnverified, "evidence quote too short"
-	}
-	store := s.evidenceStore()
-	bodies := make([]boundBody, 0, len(proofs))
-	for _, b := range proofs {
-		bb, err := readBoundResponse(store, b.Snapshot)
-		if err != nil {
-			// Fail closed: an unreadable body is never an "unverified" verdict.
-			return db.VerificationNotAssessed, "evidence body unreadable: " + err.Error()
-		}
-		bodies = append(bodies, bb)
 	}
 	for _, q := range checked {
 		nq := normalizeEvidenceText(q)
