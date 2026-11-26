@@ -845,6 +845,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/tasks/{id}/constraints/{cid}", s.editConstraint)    // constraint management: edit a constraint
 	mux.HandleFunc("DELETE /api/tasks/{id}/constraints/{cid}", s.deleteConstraint) // constraint management: delete a constraint
 	mux.HandleFunc("POST /api/tasks/{id}/control", s.control)
+	mux.HandleFunc("POST /api/tasks/{id}/scale", s.scaleTask) // hot worker scaling (#32)
 	mux.HandleFunc("PUT /api/tasks/{id}/llm", s.updateTaskLLMProfiles)
 	mux.HandleFunc("GET /api/tasks/{id}/llm/resolution", s.taskLLMResolutionHandler)
 	mux.HandleFunc("POST /api/tasks/{id}/intents/{iid}/control", s.controlIntent)
@@ -1324,6 +1325,36 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, result)
+}
+
+// scaleTask raises a running task's worker concurrency without recreating it
+// (ADR-0005, #32): it adds worker loops to match the requested count. Body
+// {"workers": N}; omitted/0 means scale to the current global workers setting.
+// Lowering is a no-op (in-flight workers are never killed). A task that is not
+// running returns 409 so the caller starts/recreates it instead.
+func (s *Server) scaleTask(w http.ResponseWriter, r *http.Request) {
+	t, ok := s.m.Task(r.PathValue("id"))
+	if !ok {
+		writeErr(w, 404, "task not found")
+		return
+	}
+	var req struct {
+		Workers int `json:"workers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	target := req.Workers
+	if target <= 0 {
+		target = s.m.Workers() // default: the current global worker count
+	}
+	added, total, running := s.engine.ScaleWorkers(t, target)
+	if !running {
+		writeErr(w, 409, "task is not running; resume or recreate it to apply a new worker count")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"added": added, "workers": total})
 }
 
 // controlIntent pauses, resumes, or cancels one local worker intent. A running
