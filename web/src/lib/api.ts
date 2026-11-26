@@ -377,6 +377,11 @@ export const api = {
     post<{ id: string; paused: boolean; queued: boolean; status: string }>(`/tasks/${id}/control`, { action }),
   controlTasksBatch: (taskIds: string[], action: "pause" | "resume") =>
     post<{ items: BatchControlItem[] }>("/tasks/control/batch", { task_ids: taskIds, action }),
+  // Hot worker scaling (#32): raise a running task's worker count without recreating it.
+  // workers = absolute target (0/omitted = the global workers setting). Returns how many
+  // loops were added and the new total; a task that is not running responds 409.
+  scaleTask: (id: string, workers: number) =>
+    post<{ added: number; workers: number }>(`/tasks/${id}/scale`, { workers }),
   taskArchives: (input?: { page?: number; size?: number; q?: string; state?: string }) => {
     const query = new URLSearchParams();
     query.set("page", String(input?.page ?? 1));
