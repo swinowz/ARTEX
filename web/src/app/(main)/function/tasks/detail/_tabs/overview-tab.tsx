@@ -25,8 +25,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { taskAssetTypeLabel } from "@/lib/task-assets";
 import type {
@@ -108,6 +110,9 @@ function StatCard({
 }
 
 export function OverviewTab({ taskId }: { taskId: string }) {
+  const [scaleOpen, setScaleOpen] = React.useState(false);
+  const [scaleTarget, setScaleTarget] = React.useState("");
+  const [scaling, setScaling] = React.useState(false);
   const [task, setTask] = React.useState<Task | null>(null);
   const [stats, setStats] = React.useState<Stats | null>(null);
   const [intents, setIntents] = React.useState<TaskNode[]>([]);
@@ -421,6 +426,29 @@ export function OverviewTab({ taskId }: { taskId: string }) {
   const running = intents.filter((i) => i.state === "running");
   const open = intents.filter((i) => i.state === "open");
   const blocked = intents.filter((i) => i.state === "blocked");
+
+  // Hot worker scaling (#32): apply a higher worker count to this running task.
+  const applyScale = React.useCallback(async () => {
+    const n = Math.floor(Number(scaleTarget));
+    if (!Number.isFinite(n) || n < 1) {
+      toast.error(t("Enter a worker count of 1 or more"));
+      return;
+    }
+    setScaling(true);
+    try {
+      const r = await api.scaleTask(taskId, n);
+      if (r.added > 0) {
+        toast.success(t("Added {added} worker(s); now {workers}", { added: r.added, workers: r.workers }));
+      } else {
+        toast.info(t("Already running {workers} worker(s)", { workers: r.workers }));
+      }
+      setScaleOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("Scaling failed — is the task running?"));
+    } finally {
+      setScaling(false);
+    }
+  }, [scaleTarget, taskId]);
   const taskFindings = findings.filter((f) => f.task_id === taskId);
   const goalsPct = task?.goals_total ? Math.round(((task.goals_met ?? 0) / task.goals_total) * 100) : 0;
   // Token totals (across all models) for the card header overview.
@@ -950,7 +978,39 @@ export function OverviewTab({ taskId }: { taskId: string }) {
           </div>
           <div>
             <div className="text-xs text-muted-foreground">{t("Running workers")}</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">{running.length}</div>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-lg font-semibold tabular-nums">{running.length}</span>
+              <Popover
+                open={scaleOpen}
+                onOpenChange={(o) => {
+                  setScaleOpen(o);
+                  if (o) setScaleTarget(String(Math.max(running.length + 1, 1)));
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-6 px-2 text-xs">
+                    <PlusIcon className="size-3" /> {t("Scale")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-60 space-y-2">
+                  <div className="text-xs text-muted-foreground">
+                    {t("Add workers to this running task without recreating it. Lowering does nothing.")}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={scaleTarget}
+                      onChange={(e) => setScaleTarget(e.target.value)}
+                      className="h-8"
+                    />
+                    <Button size="sm" onClick={applyScale} disabled={scaling}>
+                      {scaling ? t("Applying…") : t("Apply")}
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
           <div>
             <div className="text-xs text-muted-foreground">{t("Last activity")}</div>
