@@ -18,29 +18,36 @@ not reimplement them:
   tells the model to read `get_worker_trace` and, when "stuck at the same spot every time",
   change tactics.
 
-The real gap is that the loop/no-progress judgment lives **in the planner prompt as LLM
-judgment**, with no deterministic signal. On the lab, intents were re-dispatched and
-repeated work without a hard "this direction is not progressing" marker. A cheap, honest
-LLM (DeepSeek Flash) is exactly the case where an LLM-only loop check is unreliable.
+**Correction after reading the code**: a deterministic detector already exists too.
+`agent/tools.go` `detectStagnation` (#99, "ouroboros") flags a direction whose normalized
+summary repeats >= 3 times among finished intents while no finding was produced since its
+first attempt, and `graphOverviewData` surfaces it to the planner as `stagnation_warning`
+with a self-describing instruction. So the supervision triad is largely already present;
+#35 must not reimplement it.
 
-## Decision (proposed)
-Add a **deterministic no-progress signal** the planner can trust, without replacing its
-judgment:
+The one real gap `detectStagnation` leaves: it keys on the **same summary repeating**, so a
+task that churns through MANY DISTINCT empty directions (no single summary repeats 3x) is
+never flagged even though nothing is being produced — exactly the failure a cheap model
+(DeepSeek Flash) is prone to.
 
-1. Track, per exploration direction (intent lineage / re-dispatch chain), the outcome of
-   each attempt: facts written, assets written, findings written, and terminal state.
-2. A pure detector flags a direction as **stuck** when the last N attempts (default 2–3)
-   all wrote zero new facts/assets/findings and did not end `blocked` by a pure transport
-   failure (which deserves a retry, not a tactic change).
-3. Surface "stuck directions" in the planner's situation (the graph_overview tail) as a
-   deterministic list, so the model is told which directions are provably not progressing
-   and must change tactics or be dropped — instead of inferring it.
-4. Optionally (increment 3, behind a setting) a hard guard: refuse to re-dispatch an
-   identical stuck direction more than the threshold, forcing a new direction or completion.
+## Decision
+Do not reimplement the existing stagnation detection; **close its one gap** and reuse its
+surfacing. Add `detectNoYieldStreak(recentDone, yieldsOf, threshold)`: it flags when the
+most recent `threshold` (default 3) intents that ran to completion (`state == "done"`) each
+produced **no yields** (no downstream facts/findings), regardless of whether their summaries
+repeat. `blocked`/`exhausted` intents (which did not fully run) are skipped — they deserve a
+retry, not a tactic change. Its result is appended to the existing `stagnation_warning`
+directions, with a generalized instruction, so no prompt-template change and no new surface
+are needed.
 
-Increment 1 (this ADR's first code step): the pure detector `stuckDirection(attempts,
-threshold)` with unit tests, no engine wiring. Increment 2 wires attempt outcomes and the
-planner situation line. Increment 3 adds the optional hard guard.
+This is inherently **advisory** (the operator's chosen option): `stagnation_warning` is data
+in the planner's situation; the model still decides. A hard guard (engine refuses to
+re-dispatch) stays an opt-in setting for a later increment if wanted.
+
+Implementation note: an earlier draft added a speculative `StuckDirection`/`AttemptOutcome`
+abstraction before reading the data shapes; it was replaced by `detectNoYieldStreak`, which
+operates on the real `recentDone []*db.Node` + `yieldsOf` map already built in
+`graphOverviewData`, and is unit-tested without a store.
 
 ## Open question for the operator
 How aggressive should the intervention be?

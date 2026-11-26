@@ -595,10 +595,15 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 	// Stagnation surfacing (#99): repeated finished directions with no findings
 	// since their first attempt. Self-describing payload — the instruction ships
 	// with the data so no prompt-template change is needed on deployed installs.
-	if stale := detectStagnation(recentDone, vulnNodes); len(stale) > 0 {
+	stale := detectStagnation(recentDone, vulnNodes)
+	// #35: also flag a task churning through DISTINCT empty directions — the most recent
+	// completed intents each produced no yield, which detectStagnation (same-summary repeat)
+	// never catches. Surfaced through the same channel so no prompt-template change is needed.
+	stale = append(stale, detectNoYieldStreak(recentDone, yieldsOf, noYieldStreakMin)...)
+	if len(stale) > 0 {
 		out["stagnation_warning"] = map[string]any{
 			"directions":  stale,
-			"instruction": "these directions were dispatched repeatedly with zero findings produced since their first attempt — do NOT re-dispatch the same approach again; open a materially different direction, or judge the goal on the existing evidence instead of grinding",
+			"instruction": "these recently finished directions produced nothing (repeated with zero findings since the first attempt, or ran to completion with no facts/findings at all) — do NOT re-dispatch the same approach again; open a materially different direction, or judge the goal on the existing evidence instead of grinding",
 		}
 	}
 	// findings are the task's highest-value output → the overview carries the latest

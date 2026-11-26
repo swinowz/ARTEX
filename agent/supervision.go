@@ -1,47 +1,54 @@
 package agent
 
-// Supervision: deterministic no-progress detection (ADR-0006, #35). ARTEX already has
-// the budget wrap-up (the Reflector) and a planner anti-stall hard floor; the missing
-// piece is a deterministic signal that an exploration direction is not progressing, so the
-// planner is told which directions to change tactics on instead of inferring it from an
-// LLM read of the traces.
+import (
+	"encoding/json"
 
-// AttemptOutcome summarizes what one attempt at an exploration direction wrote back.
-type AttemptOutcome struct {
-	FactsWritten    int
-	AssetsWritten   int
-	FindingsWritten int
-	// TransportFailed is true when the attempt ended blocked by a pure transport/model
-	// failure (network, provider 5xx, rate limit) rather than by exploring and finding
-	// nothing. A transport failure deserves a retry, not a tactic change, so it never
-	// counts as "stuck".
-	TransportFailed bool
-}
+	"github.com/Autumn-27/artex/db"
+)
 
-// producedSomething reports whether an attempt wrote any new graph content.
-func (a AttemptOutcome) producedSomething() bool {
-	return a.FactsWritten > 0 || a.AssetsWritten > 0 || a.FindingsWritten > 0
-}
+// Supervision: deterministic no-progress detection (ADR-0006, #35).
+//
+// ARTEX already carries most of PentAGI's supervision triad: the budget wrap-up
+// reserve (agent/budget.go) is the Reflector, the planner has a hard-floor anti-stall,
+// and detectStagnation (#99) already flags a direction whose SAME summary repeats and
+// yields no finding, surfaced to the planner as stagnation_warning.
+//
+// The one gap detectStagnation leaves is a task that churns through MANY DISTINCT empty
+// directions — no single summary repeats, so it is never flagged even though nothing is
+// being produced. detectNoYieldStreak closes that: it flags when the most recent
+// completed intents each produced no yields at all.
 
-// StuckThresholdDefault is the number of consecutive empty attempts after which a
-// direction is considered stuck (change tactics or drop it).
-const StuckThresholdDefault = 2
+// noYieldStreakMin is the number of consecutive completed (state "done") intents that
+// must each have produced nothing before the task is flagged as churning empty directions.
+const noYieldStreakMin = 3
 
-// StuckDirection reports whether an exploration direction is provably not progressing:
-// its last `threshold` attempts each wrote nothing new (no facts, assets or findings) and
-// none was a pure transport failure. A threshold below 1 is treated as 1. With fewer
-// attempts than the threshold it is never stuck — there is not enough evidence yet.
-func StuckDirection(attempts []AttemptOutcome, threshold int) bool {
+// detectNoYieldStreak flags that the most recent `threshold` intents that ran to
+// completion (state "done") each produced no yields (no downstream facts/findings),
+// regardless of whether their summaries repeat. recentDone is newest-first. Intents that
+// did not fully run (state "blocked" — a transport failure — or "exhausted" — cut off by
+// budget) are skipped: they are not counted as empty and do not break the streak, since
+// they deserve a retry, not a tactic change. yieldsOf maps an intent id to the downstream
+// nodes it produced. Returns the offending directions (newest first), or nil when there
+// are fewer than `threshold` completed intents or any of them produced something.
+func detectNoYieldStreak(recentDone []*db.Node, yieldsOf map[int64][]int64, threshold int) []map[string]any {
 	if threshold < 1 {
 		threshold = 1
 	}
-	if len(attempts) < threshold {
-		return false
-	}
-	for _, a := range attempts[len(attempts)-threshold:] {
-		if a.TransportFailed || a.producedSomething() {
-			return false
+	var out []map[string]any
+	for _, n := range recentDone {
+		if n.State != "done" {
+			continue // blocked/exhausted did not fully run: skip, don't count
+		}
+		if len(yieldsOf[n.ID]) > 0 {
+			return nil // the most recent completed direction produced something: not stuck
+		}
+		var p map[string]any
+		_ = json.Unmarshal(n.Payload, &p)
+		summ, _ := p["summary"].(string)
+		out = append(out, map[string]any{"id": n.ID, "direction": summ})
+		if len(out) >= threshold {
+			return out
 		}
 	}
-	return true
+	return nil // fewer than threshold completed intents: not enough evidence
 }
