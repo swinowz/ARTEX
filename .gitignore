@@ -66,3 +66,6 @@ posture-runs/
 
 # benchmark runner output (one dir per run)
 benchmark-results/
+
+# AI working docs (local only, never committed)
+cdocs/
