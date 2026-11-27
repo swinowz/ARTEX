@@ -44,6 +44,10 @@ RUN ARTEX_SKIP_FRONTEND=1 \
     ARTEX_OUTPUT=/out/artex \
     ARTEX_BUILD_VERSION="${ARTEX_VERSION}" \
     bash ./build.sh --target "${TARGETOS:-linux}/${TARGETARCH:-amd64}"
+# Capability MCP servers shipped beside the main binary. Their stdio transport is
+# a separate process, so they are built as their own static binaries.
+RUN CGO_ENABLED=0 GOOS="${TARGETOS:-linux}" GOARCH="${TARGETARCH:-amd64}" \
+    go build -trimpath -o /out/mcp-nmap ./cmd/mcp-nmap
 
 # ------------------------------------------------------- third-party tools ---
 # Web-recon toolbox (drost-community take 1, #100): pinned release binaries, staged
@@ -276,6 +280,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 WORKDIR /app
 # Binary compiled from source in the build stage above.
 COPY --from=build /out/artex /app/artex
+COPY --from=build /out/mcp-nmap /usr/local/bin/mcp-nmap
 # Daemon startup script: relaunches the process after a crash and forwards SIGTERM
 # to artex — docker stop only signals PID 1; without forwarding, artex never receives it,
 # cannot shut down gracefully, and is hard-killed by SIGKILL after 10 seconds.
