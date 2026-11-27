@@ -575,6 +575,14 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                 ) : (
                   <div key={g.id} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
                     <StatusBadge domain="goal" value={g.state} />
+                    {g.state === "met" && g.unverified_met && (
+                      <span
+                        className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400"
+                        title={t("Marked met without a linked proof observation")}
+                      >
+                        {t("Unverified")}
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1 break-words">{g.text}</span>
                     {g.vulnclass && (
                       <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs">
