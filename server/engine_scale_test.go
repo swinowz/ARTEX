@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -95,4 +96,47 @@ func TestScaleWorkersClampsBelowOne(t *testing.T) {
 	}
 	cancel()
 	rt.wg.Wait()
+}
+
+// Issue #6: PUT /api/settings?workers=N applies to tasks started afterwards and
+// leaves running tasks untouched; POST /api/tasks/{id}/scale with omitted/0
+// workers scales a running task up to the new global setting without restart.
+func TestWorkersSettingAndScaleTask(t *testing.T) {
+	g := newGateServer(t)
+	task, err := g.m.CreateTask("workers setting probe", "verify workers setting and hot scale", nil, 0, 0)
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	rt := g.s.engine.registerTaskRoutines(ctx, task.ID, 3, 3)
+	if rt == nil {
+		cancel()
+		t.Fatal("runtime not registered")
+	}
+	for i := 0; i < 3; i++ {
+		runTaskRoutine(rt, func(c context.Context) { <-c.Done() })
+	}
+	t.Cleanup(func() {
+		cancel()
+		rt.wg.Wait()
+	})
+
+	// Raising global workers via PUT /api/settings updates the setting but does
+	// not mutate the already-running task's worker count.
+	code, out := g.do(t, "PUT", "/api/settings", `{"workers":5}`)
+	if code != 200 || out["workers"] != float64(5) {
+		t.Fatalf("PUT /api/settings workers=5: code=%d out=%v", code, out)
+	}
+	_, cur, _ := g.s.engine.ScaleWorkers(task, 0)
+	if cur != 3 {
+		t.Fatalf("running task workers after PUT /api/settings = %d, want 3", cur)
+	}
+
+	// POST /api/tasks/{id}/scale with omitted workers defaults to the global
+	// workers setting (5) and adds the 2 missing loops.
+	code, out = g.do(t, "POST", fmt.Sprintf("/api/tasks/%s/scale", task.ID), `{}`)
+	if code != 200 || out["added"] != float64(2) || out["workers"] != float64(5) {
+		t.Fatalf("POST /scale: code=%d out=%v, want added=2 workers=5", code, out)
+	}
 }
