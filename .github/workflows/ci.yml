@@ -70,7 +70,7 @@ jobs:
 
         run: >-
           go test -race -p 1 ./agent ./archivestore ./cmd/artex ./config ./db ./evidence ./guard
-          ./intercept ./llmpool ./llmrec ./mcphttp ./mcps/nmap ./notify ./scope ./server ./sidequestion
+          ./intercept ./llmpool ./llmrec ./mcphttp ./mcps/nmap ./notify ./redact ./scope ./server ./sidequestion
           ./traffic ./traffic/rewrite
 
   # The go job above tests the version go.mod pins. A newer Go can break the

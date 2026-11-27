@@ -3168,6 +3168,7 @@ function CreateTaskSheet({
   const [heartbeatMin, setHeartbeatMin] = React.useState("10"); // planner heartbeat (minutes); default 10, minimum 10 (matching the backend)
   const [seedFirstIntent, setSeedFirstIntent] = React.useState(false); // dispatch a seed intent at creation so the worker starts without waiting for the first planner round; off by default, standard plan-then-execute
   const [coverageEnabled, setCoverageEnabled] = React.useState(true); // asset coverage feature; on by default. Off = no coverage computed/displayed, no scope accumulation, scope-related tools hidden (company links unaffected)
+  const [sendAuthMaterial, setSendAuthMaterial] = React.useState(false); // #11: off by default. On = NT hashes, tickets and private keys are sent to the model provider (pass-the-hash tasks)
   const [interceptRules, setInterceptRules] = React.useState<AssetInterceptRuleInput[]>([]); // task-level asset intercept rules (this task only, never entering the global table)
   const [credentials, setCredentials] = React.useState<TaskCredentialInput[]>([]); // test accounts declared at creation (#3); an empty password = the agent registers that account and records it
   // Method 1, file upload: files are staged under drafts/<draftId>/uploads/ before the task is created, and their absolute paths are appended to the description.
@@ -3237,6 +3238,7 @@ function CreateTaskSheet({
         seedFirstIntent,
         planHeartbeatSeconds: heartbeatSec,
         coverageEnabled,
+        sendAuthMaterial,
         interceptRules: interceptRules
           .map((r) => ({ ...r, pattern: r.pattern.trim() }))
           .filter((r) => r.pattern !== ""),
@@ -3538,6 +3540,21 @@ function CreateTaskSheet({
                   <p className="text-muted-foreground text-xs">
                     {t(
                       "When enabled, the \"description + goal\" is dispatched as one intent right at creation; the worker starts without waiting for the first planning round and the planner takes over afterwards to judge/follow up. Recommended for settings like CTF where one run usually solves it directly; disabled follows the standard plan-then-execute flow.",
+                    )}
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <label htmlFor="send-auth-material" className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      id="send-auth-material"
+                      checked={sendAuthMaterial}
+                      onCheckedChange={(v) => setSendAuthMaterial(!!v)}
+                    />
+                    {t("Send authentication material to the model")}
+                  </label>
+                  <p className="text-muted-foreground text-xs">
+                    {t(
+                      "Off by default: NT/LM hashes, Kerberos tickets, private keys, password fields and user:password lines are removed from the request sent to the LLM provider, for every tool output and every turn. Turn it on only when the task must reuse a hash or a ticket (pass-the-hash); the material then leaves the machine.",
                     )}
                   </p>
                 </div>

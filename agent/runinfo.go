@@ -24,6 +24,9 @@ type RunInfo struct {
 	ExplorationID      int64  // exploration id; 0 when unknown
 	IntentID           int64  // worker's intent node; 0 for planner/mainagent/chat
 	SessionID          string // chat conversation id; empty for task runs
+	// SendAuthMaterial is the task's opt-in (tasks.send_auth_material, #11). Zero
+	// value = false = authentication material is redacted before the provider call.
+	SendAuthMaterial bool
 }
 
 // explorationID reads a store's exploration id, tolerating a nil store (planner and

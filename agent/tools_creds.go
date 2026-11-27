@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 
 	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
@@ -63,7 +64,7 @@ func (t *ToolSet) saveTaskCredential() actool.CoreTool {
 func (t *ToolSet) listTaskCredentials() actool.CoreTool {
 	return writeTool(
 		"list_task_credentials",
-		"List this task's test accounts: user-declared accounts (e.g. program-provided aliases; a user-declared entry with an empty password means: register an account on that domain with a strong password, then record it via save_task_credential) plus accounts recorded by earlier runs. Check this BEFORE registering a new account, and use matching entries for authenticated testing.",
+		"List this task's test accounts: user-declared accounts (e.g. program-provided aliases; a user-declared entry with has_password=false means: register an account on that domain with a strong password, then record it via save_task_credential) plus accounts recorded by earlier runs. Check this BEFORE registering a new account, and use matching entries for authenticated testing. The password is never returned: pass the entry's ref as credential_ref to a tool that accepts one (e.g. mcp__netexec__inventory); the server resolves it.",
 		obj(map[string]any{}),
 		func(_ context.Context, _ json.RawMessage) (actool.Result, error) {
 			if t.ts == nil {
@@ -82,7 +83,13 @@ func (t *ToolSet) listTaskCredentials() actool.CoreTool {
 			if err != nil {
 				return actool.Errorf("list_task_credentials failed: " + err.Error()), nil
 			}
-			return jsonResult(map[string]any{"credentials": list})
+			// Reference only (#11): the value is resolved server-side by the tool that
+			// takes credential_ref, so it never enters the model context or an llm record.
+			out := make([]map[string]any, 0, len(list))
+			for _, c := range list {
+				out = append(out, credentialView(c))
+			}
+			return jsonResult(map[string]any{"credentials": out})
 		})
 }
 
@@ -99,20 +106,39 @@ func (t *ToolSet) taskCredentialOverview() []map[string]any {
 	}
 	out := make([]map[string]any, 0, len(list))
 	for _, c := range list {
-		m := map[string]any{
-			"domain":   c.Domain,
-			"username": c.Username,
-			"source":   c.Source,
-		}
-		if c.Note != "" {
-			m["note"] = c.Note
-		}
-		if c.Password == "" {
-			m["instruction"] = "no password yet: register an account with this username on this domain (choose a strong unique password), then record it via save_task_credential"
-		} else {
-			m["password"] = c.Password
-		}
-		out = append(out, m)
+		out = append(out, credentialOverviewEntry(c))
 	}
 	return out
 }
+
+// credentialView is the model-facing view of one account: a reference, never the
+// value (#11). Anything added here transits to the LLM provider.
+func credentialView(c db.TaskCredential) map[string]any {
+	m := map[string]any{
+		"ref":          CredentialRef(c.ID),
+		"domain":       c.Domain,
+		"username":     c.Username,
+		"source":       c.Source,
+		"has_password": c.Password != "",
+	}
+	if c.Note != "" {
+		m["note"] = c.Note
+	}
+	return m
+}
+
+// credentialOverviewEntry is credentialView plus the per-round instruction the
+// worker needs to use the account.
+func credentialOverviewEntry(c db.TaskCredential) map[string]any {
+	m := credentialView(c)
+	if c.Password == "" {
+		m["instruction"] = "no password yet: register an account with this username on this domain (choose a strong unique password), then record it via save_task_credential"
+	} else {
+		m["instruction"] = "password stored server-side; pass ref as credential_ref to a tool that accepts one (e.g. mcp__netexec__inventory), never type the password"
+	}
+	return m
+}
+
+// CredentialRef is the opaque reference a tool accepts in credential_ref: the
+// credential row id, never the value (#11).
+func CredentialRef(id int64) string { return strconv.FormatInt(id, 10) }

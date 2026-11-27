@@ -139,7 +139,7 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	// Main chat remains available after the task worker container is retired.
 	// A separate container is owned by this turn and mounts only the main run dir.
 	mainDir := ensureRunDir(m.workDir, taskID, 0)
-	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
+	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts), SendAuthMaterial: sendAuthMaterialOn(as, taskID)})
 	var sandboxKey string
 	ctx, sandboxKey, err = startSessionSandbox(ctx, m.sandbox, mainDir)
 	if err != nil {

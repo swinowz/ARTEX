@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/llmrec"
+	"github.com/Autumn-27/artex/redact"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/compaction"
 	"github.com/Autumn-27/norma/llm"
@@ -514,6 +515,13 @@ func (t quotaAwareTransport) RoundTrip(req *http.Request) (*http.Response, error
 	// raw wire bodies can be persisted. This is the only layer that still sees
 	// them: norma builds the request body internally and decodes the SSE response
 	// before either reaches the recorder.
+	// Authentication material is removed from the outgoing body unless the task
+	// opted out (#11). This is the only choke point that covers every source of
+	// model-visible text, Bash output included, and it runs before the recorder
+	// snapshots the body, so llm records hold the redacted bytes too.
+	if !RunInfoFrom(req.Context()).SendAuthMaterial {
+		redactAuthMaterial(req)
+	}
 	capt := llmrec.CaptureFrom(req.Context())
 	capt.SetRequest(requestBodySnapshot(req))
 
@@ -546,6 +554,50 @@ func (t quotaAwareTransport) RoundTrip(req *http.Request) (*http.Response, error
 // requestBodySnapshot copies an outgoing request body without consuming it.
 // norma builds every model request from a *bytes.Reader, so net/http populates
 // GetBody and the copy has no effect on what gets sent.
+// redactAuthMaterial rewrites the request body in place when it carries
+// authentication material. Replacing a matched span never breaks the JSON: every
+// pattern matches text with no unescaped quote.
+func redactAuthMaterial(req *http.Request) {
+	raw, ok := requestBodyBytes(req)
+	if !ok || !redact.Changed(raw) {
+		return
+	}
+	out := redact.Text(raw)
+	req.Body = io.NopCloser(strings.NewReader(out))
+	req.ContentLength = int64(len(out))
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader(out)), nil
+	}
+}
+
+// requestBodyBytes reads the body without consuming it when the request can be
+// replayed (net/http sets GetBody for the bytes.Reader norma uses); otherwise it
+// consumes and puts the bytes back.
+func requestBodyBytes(req *http.Request) (string, bool) {
+	if req.GetBody != nil {
+		rc, err := req.GetBody()
+		if err != nil {
+			return "", false
+		}
+		defer rc.Close()
+		b, err := io.ReadAll(rc)
+		if err != nil {
+			return "", false
+		}
+		return string(b), true
+	}
+	if req.Body == nil {
+		return "", false
+	}
+	b, err := io.ReadAll(req.Body)
+	_ = req.Body.Close()
+	if err != nil {
+		return "", false
+	}
+	req.Body = io.NopCloser(strings.NewReader(string(b)))
+	return string(b), true
+}
+
 func requestBodySnapshot(req *http.Request) string {
 	if req.GetBody == nil {
 		return ""

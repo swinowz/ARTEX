@@ -338,6 +338,8 @@
   "Ask the user — wait for approval": "Kullanıcıya sor — onay bekle",
   "Asset": "Varlık",
   "Asset coverage": "Varlık kapsaması",
+  "Send authentication material to the model": "Model için kimlik doğrulama materyalini gönder",
+  "Off by default: NT/LM hashes, Kerberos tickets, private keys, password fields and user:password lines are removed from the request sent to the LLM provider, for every tool output and every turn. Turn it on only when the task must reuse a hash or a ticket (pass-the-hash); the material then leaves the machine.": "Varsayılan olarak kapalı: NT/LM hash'leri, Kerberos biletleri, özel anahtarlar, parola alanları ve kullanıcı:parola satırları, LLM sağlayıcısına gönderilen istekten her araç çıktısı ve her tur için çıkarılır. Yalnızca görev bir hash veya bileti yeniden kullanmak zorundaysa (pass-the-hash) açın; materyal o zaman makineden çıkar.",
   "Asset coverage feature": "Varlık kapsama özelliği",
   "Asset distribution": "Varlık dağılımı",
   "Asset ID": "Varlık kimliği",

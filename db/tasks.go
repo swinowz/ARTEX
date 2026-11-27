@@ -62,6 +62,10 @@ type Task struct {
 	// situation view (the scope field is still kept). company associations (task_scope kind=company)
 	// are unrelated to this switch and never affected. See db/task_scope.go.
 	CoverageEnabled bool `json:"coverage_enabled"`
+	// SendAuthMaterial is the per-task opt-out of the authentication-material
+	// redaction (#11). false (default) = hashes, tickets and private keys are
+	// removed from the outgoing model request. Fixed at creation.
+	SendAuthMaterial bool `json:"send_auth_material"`
 }
 
 // TaskDeleteResult reports optional related-data cleanup performed in the same
@@ -170,6 +174,9 @@ type TaskCreateOptions struct {
 	// creation paths that do not care about the switch (orchestration spawn, old API) keep the
 	// original behavior. Only web task creation can explicitly pass false to turn it off.
 	CoverageEnabled *bool
+	// SendAuthMaterial opts this task out of the authentication-material redaction
+	// (#11); nil = default false = redact. Fixed at creation.
+	SendAuthMaterial *bool
 	// InterceptRules are task-level asset interception rules, written into task_intercept_rules in the same transaction as the task at creation.
 	InterceptRules []TaskInterceptRuleInput
 	// LLMRotate enables per-intent round-robin rotation of the task's LLM chain
@@ -221,6 +228,7 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 	}
 	opts.PlanHeartbeatSeconds = normalizeHeartbeat(opts.PlanHeartbeatSeconds)
 	coverageEnabled := opts.CoverageEnabled == nil || *opts.CoverageEnabled
+	sendAuthMaterial := opts.SendAuthMaterial != nil && *opts.SendAuthMaterial
 	var categoryName string
 	if opts.CategoryID != nil {
 		if *opts.CategoryID <= 0 {
@@ -250,8 +258,9 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 		SourceTaskIDs:  append([]int64(nil), opts.SourceTaskIDs...),
 		CompanyIDs:     append([]int64(nil), opts.CompanyIDs...),
 		TimeoutSeconds: opts.TimeoutSeconds, PlanHeartbeatSeconds: opts.PlanHeartbeatSeconds,
-		PlanQuietMode:   quietMode,
-		CoverageEnabled: coverageEnabled,
+		PlanQuietMode:    quietMode,
+		CoverageEnabled:  coverageEnabled,
+		SendAuthMaterial: sendAuthMaterial,
 	}
 	rotate := false
 	if opts.LLMRotate != nil {
@@ -260,9 +269,9 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 	t.LLMRotate = rotate
 	t.TargetGate = opts.TargetGate != nil && *opts.TargetGate
 	if err := tx.QueryRow(`
-INSERT INTO tasks(name, category_id, description, goal, exploration_id, llm_profile_id, active_llm_profile_id, timeout_seconds, plan_heartbeat_seconds, plan_quiet_mode, coverage_enabled, llm_rotate, target_gate)
-VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$12)
-RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds, opts.PlanHeartbeatSeconds, quietMode, coverageEnabled, rotate, t.TargetGate).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {
+INSERT INTO tasks(name, category_id, description, goal, exploration_id, llm_profile_id, active_llm_profile_id, timeout_seconds, plan_heartbeat_seconds, plan_quiet_mode, coverage_enabled, llm_rotate, target_gate, send_auth_material)
+VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$12,$13)
+RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds, opts.PlanHeartbeatSeconds, quietMode, coverageEnabled, rotate, t.TargetGate, sendAuthMaterial).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {
 		return nil, err
 	}
 	if err := insertTaskRelations(tx, t.ID, opts.SourceTaskIDs); err != nil {
@@ -378,11 +387,11 @@ func insertTaskLLMProfiles(tx *sql.Tx, taskID int64, profileIDs []int64) error {
 
 const taskCols = `id, COALESCE(name,''), category_id,
 COALESCE((SELECT category.name FROM task_categories category WHERE category.id=tasks.category_id),''),
-description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,''), llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,''), pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0), COALESCE(plan_heartbeat_seconds,300), COALESCE(plan_quiet_mode,true), COALESCE(coverage_enabled,true), COALESCE(llm_rotate,false), first_run_at, deadline_at, target_gate`
+description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,''), llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,''), pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0), COALESCE(plan_heartbeat_seconds,300), COALESCE(plan_quiet_mode,true), COALESCE(coverage_enabled,true), COALESCE(llm_rotate,false), first_run_at, deadline_at, target_gate, COALESCE(send_auth_material,false)`
 
 func scanTask(sc interface{ Scan(...any) error }) (*Task, error) {
 	var t Task
-	if err := sc.Scan(&t.ID, &t.Name, &t.CategoryID, &t.CategoryName, &t.Description, &t.Goal, &t.ExplorationID, &t.Status, &t.Paused, &t.Queued, &t.QueuedAt, &t.QueueMode, &t.LLMProfileID, &t.ActiveLLMProfileID, &t.ParentRef, &t.PinnedAt, &t.CreatedAt, &t.CompletedAt, &t.TimeoutSeconds, &t.PlanHeartbeatSeconds, &t.PlanQuietMode, &t.CoverageEnabled, &t.LLMRotate, &t.FirstRunAt, &t.DeadlineAt, &t.TargetGate); err != nil {
+	if err := sc.Scan(&t.ID, &t.Name, &t.CategoryID, &t.CategoryName, &t.Description, &t.Goal, &t.ExplorationID, &t.Status, &t.Paused, &t.Queued, &t.QueuedAt, &t.QueueMode, &t.LLMProfileID, &t.ActiveLLMProfileID, &t.ParentRef, &t.PinnedAt, &t.CreatedAt, &t.CompletedAt, &t.TimeoutSeconds, &t.PlanHeartbeatSeconds, &t.PlanQuietMode, &t.CoverageEnabled, &t.LLMRotate, &t.FirstRunAt, &t.DeadlineAt, &t.TargetGate, &t.SendAuthMaterial); err != nil {
 		return nil, err
 	}
 	t.Pinned = t.PinnedAt != nil

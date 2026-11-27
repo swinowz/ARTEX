@@ -1824,12 +1824,13 @@ type createTaskReq struct {
 	SourceTaskIDs        []string `json:"source_task_ids,omitempty"` // direct, read-only inherited source tasks
 	CompanyIDs           []int64  `json:"company_ids,omitempty"`     // links the company scope and snapshots its current assets; does not copy assets or force intent generation
 	TimeoutSeconds       int      `json:"timeout_seconds"`
-	LLMRotate            *bool    `json:"llm_rotate"`                  // distribute worker intents across the ordered profiles
-	PlanHeartbeatSeconds int      `json:"plan_heartbeat_seconds"`      // planner heartbeat interval (seconds); 0/omitted = default 600 (10min); floor = default = 600, lower values are raised to 600
-	PlanQuietMode        *bool    `json:"plan_quiet_mode,omitempty"`   // planner quiet-mode switch (#86); omitted = default on; false = edge rounds always plan
-	TargetGate           *bool    `json:"target_gate,omitempty"`       // approval gate for asset targets, opt-in; omitted/null = off
-	SeedFirstIntent      *bool    `json:"seed_first_intent,omitempty"` // issue one seed intent at creation (content = description + goal) so a worker can start right away without waiting for the first planner round; omitted/null = default off, the standard plan-then-execute flow. Pass true explicitly to enable (for CTF tasks often solved in one work, this skips the pre-start planner round).
-	CoverageEnabled      *bool    `json:"coverage_enabled,omitempty"`  // asset coverage feature; omitted/null = default on (true). false = disables coverage calculation/display/auto-accumulated scope + hides add_task_scope/list_untested_assets. company links are unaffected.
+	LLMRotate            *bool    `json:"llm_rotate"`                   // distribute worker intents across the ordered profiles
+	PlanHeartbeatSeconds int      `json:"plan_heartbeat_seconds"`       // planner heartbeat interval (seconds); 0/omitted = default 600 (10min); floor = default = 600, lower values are raised to 600
+	PlanQuietMode        *bool    `json:"plan_quiet_mode,omitempty"`    // planner quiet-mode switch (#86); omitted = default on; false = edge rounds always plan
+	TargetGate           *bool    `json:"target_gate,omitempty"`        // approval gate for asset targets, opt-in; omitted/null = off
+	SeedFirstIntent      *bool    `json:"seed_first_intent,omitempty"`  // issue one seed intent at creation (content = description + goal) so a worker can start right away without waiting for the first planner round; omitted/null = default off, the standard plan-then-execute flow. Pass true explicitly to enable (for CTF tasks often solved in one work, this skips the pre-start planner round).
+	CoverageEnabled      *bool    `json:"coverage_enabled,omitempty"`   // asset coverage feature; omitted/null = default on (true). false = disables coverage calculation/display/auto-accumulated scope + hides add_task_scope/list_untested_assets. company links are unaffected.
+	SendAuthMaterial     *bool    `json:"send_auth_material,omitempty"` // #11: omitted/null = default false = NT hashes, tickets and private keys are redacted from the outgoing model request. true = send them (pass-the-hash tasks). Fixed at creation.
 	// InterceptRules: task-level asset interception/allow rules (entered at creation, stored in task_intercept_rules, never the global table).
 	InterceptRules []taskInterceptRuleReq `json:"intercept_rules,omitempty"`
 	// Credentials: test accounts declared at creation (#3). An empty password means
@@ -1901,10 +1902,10 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		Name: strings.TrimSpace(req.Name), CategoryID: req.CategoryID,
 		SourceTaskIDs: sourceIDs, CompanyIDs: req.CompanyIDs, LLMProfileIDs: req.LLMProfileIDs,
 		TimeoutSeconds: req.TimeoutSeconds, PlanHeartbeatSeconds: req.PlanHeartbeatSeconds, PlanQuietMode: req.PlanQuietMode,
-		CoverageEnabled: req.CoverageEnabled,
-		InterceptRules:  interceptRules,
-		LLMRotate:       req.LLMRotate,
-		TargetGate:      req.TargetGate,
+		CoverageEnabled: req.CoverageEnabled, SendAuthMaterial: req.SendAuthMaterial,
+		InterceptRules: interceptRules,
+		LLMRotate:      req.LLMRotate,
+		TargetGate:     req.TargetGate,
 	})
 	if err != nil {
 		if errors.Is(err, db.ErrTaskCategoryInvalid) || errors.Is(err, db.ErrTaskCategoryNotFound) {

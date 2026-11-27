@@ -313,6 +313,7 @@ export const api = {
     seedFirstIntent?: boolean;
     planHeartbeatSeconds?: number;
     coverageEnabled?: boolean;
+    sendAuthMaterial?: boolean;
     interceptRules?: AssetInterceptRuleInput[];
     credentials?: TaskCredentialInput[];
   }) =>
@@ -329,6 +330,7 @@ export const api = {
       seed_first_intent: input.seedFirstIntent ?? false,
       plan_heartbeat_seconds: input.planHeartbeatSeconds ?? 0, // 0 = the backend normalizes to the default 600 (10min)
       coverage_enabled: input.coverageEnabled ?? true, // on by default; false disables the asset coverage feature
+      send_auth_material: input.sendAuthMaterial ?? false, // off by default: hashes, tickets and private keys are redacted before the model call (#11)
       intercept_rules: input.interceptRules ?? [], // task-level asset interception rules
       credentials: input.credentials ?? [], // test accounts declared at creation; an empty password = the agent generates and records it (#3)
     }),

@@ -553,7 +553,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// phase, Bash is hidden via Settlement.DisabledTools (no local gating needed).
 	base := tsx.DropCoverageTools(tsx.WorkerTools())
 	base = append(base, defaultToolsExcept(w.workDir, "MultiEdit", "Glob", "Grep")...)
-	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, TaskSandbox: w.sandbox != nil, ExplorationID: explorationID(ts), IntentID: intent.ID})
+	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, TaskSandbox: w.sandbox != nil, ExplorationID: explorationID(ts), IntentID: intent.ID, SendAuthMaterial: sendAuthMaterialOn(as, taskID)})
 	tools, def, cleanup := assembleWorkerTools(WithToolQuery(ctx, nodeSummary(intent)), base, w.extraTools, w.sandbox, taskID)
 	defer cleanup()
 

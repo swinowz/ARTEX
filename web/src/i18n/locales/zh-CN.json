@@ -338,6 +338,8 @@
   "Ask the user — wait for approval": "向用户申请 — 等待审批",
   "Asset": "资产",
   "Asset coverage": "资产覆盖图",
+  "Send authentication material to the model": "向模型发送认证材料",
+  "Off by default: NT/LM hashes, Kerberos tickets, private keys, password fields and user:password lines are removed from the request sent to the LLM provider, for every tool output and every turn. Turn it on only when the task must reuse a hash or a ticket (pass-the-hash); the material then leaves the machine.": "默认关闭：发送给 LLM 提供方的请求中，每个工具输出和每一轮都会移除 NT/LM 哈希、Kerberos 票据、私钥、密码字段以及 用户:密码 行。仅在任务必须复用哈希或票据（pass-the-hash）时才开启；此时材料会离开本机。",
   "Asset coverage feature": "资产覆盖度功能",
   "Asset distribution": "资产分布",
   "Asset ID": "资产ID",

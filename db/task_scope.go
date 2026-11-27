@@ -379,6 +379,21 @@ type Coverage struct {
 	*CoverageLedger
 }
 
+// SendAuthMaterial reports whether a task opted out of the authentication-material
+// redaction (#11). Unknown, legacy and taskID<=0 cases return false: the redaction
+// stays on when the answer is unknown, unlike the coverage switch which fails open.
+func (s *AssetStore) SendAuthMaterial(taskID int64) (bool, error) {
+	if taskID <= 0 {
+		return false, nil
+	}
+	var send bool
+	err := s.db.QueryRow(`SELECT COALESCE(send_auth_material,false) FROM tasks WHERE id=$1`, taskID).Scan(&send)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return send, err
+}
+
 // CoverageEnabled reports whether a task has the asset-coverage feature turned on
 // (tasks.coverage_enabled). A missing row stays enabled, which is the historical
 // default for unknown and legacy tasks. taskID<=0 stays enabled. A query error is

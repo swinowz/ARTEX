@@ -543,6 +543,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     plan_heartbeat_seconds INTEGER NOT NULL DEFAULT 300,
     plan_quiet_mode BOOLEAN NOT NULL DEFAULT true,
     coverage_enabled BOOLEAN NOT NULL DEFAULT true,
+    send_auth_material BOOLEAN NOT NULL DEFAULT false,
     pinned_at      TIMESTAMPTZ,
     first_run_at   TIMESTAMPTZ,
     deadline_at    TIMESTAMPTZ,
@@ -569,6 +570,9 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS queued BOOLEAN NOT NULL DEFAULT false
 -- and open add_task_scope/list_untested_assets to the agent; false=all off (see task_scope.go).
 -- Existing tasks default to true to keep prior behavior; company associations (task_scope kind=company) are unaffected by this switch.
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS coverage_enabled BOOLEAN NOT NULL DEFAULT true;
+-- Per-task opt-out of the authentication-material redaction (#11): false (default)
+-- removes NT hashes, tickets and private keys from the outgoing model request.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS send_auth_material BOOLEAN NOT NULL DEFAULT false;
 -- queued_at makes admission FIFO reflect the actual enqueue order rather than the
 -- task creation order. queue_mode distinguishes first bootstrap from resuming an
 -- exploration that already owns goals/history.

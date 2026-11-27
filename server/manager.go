@@ -69,6 +69,7 @@ type Task struct {
 	PlanHeartbeatSeconds int                    `json:"plan_heartbeat_seconds"` // planner heartbeat trigger interval (seconds)
 	PlanQuietMode        bool                   `json:"plan_quiet_mode"`        // planner quiet-mode switch (#86), editable mid-run
 	CoverageEnabled      bool                   `json:"coverage_enabled"`       // asset coverage feature switch (fixed at creation, on by default)
+	SendAuthMaterial     bool                   `json:"send_auth_material"`     // #11: auth material is sent to the model provider (fixed at creation)
 	FirstRunAt           int64                  `json:"first_run_at,omitempty"`
 	DeadlineAt           int64                  `json:"deadline_at,omitempty"`
 	Store                *pgdb.ExplorationStore `json:"-"`
@@ -1031,9 +1032,10 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		SourceTaskIDs:  append([]int64(nil), pt.SourceTaskIDs...),
 		CompanyIDs:     append([]int64(nil), pt.CompanyIDs...),
 		TimeoutSeconds: pt.TimeoutSeconds, PlanHeartbeatSeconds: pt.PlanHeartbeatSeconds,
-		PlanQuietMode:   pt.PlanQuietMode,
-		CoverageEnabled: pt.CoverageEnabled,
-		FirstRunAt:      unixOrZero(pt.FirstRunAt), DeadlineAt: unixOrZero(pt.DeadlineAt),
+		PlanQuietMode:    pt.PlanQuietMode,
+		CoverageEnabled:  pt.CoverageEnabled,
+		SendAuthMaterial: pt.SendAuthMaterial,
+		FirstRunAt:       unixOrZero(pt.FirstRunAt), DeadlineAt: unixOrZero(pt.DeadlineAt),
 		Store: store, Guard: guard.NewWithInterceptor(ic), TargetGuard: guard.NewTargetOnly(ic), notify: make(chan struct{}, 1),
 		interceptor: ic,
 	}
