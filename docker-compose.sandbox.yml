@@ -1,0 +1,32 @@
+# Opt-in rootless task sandbox deployment. Use with docker-compose.yml only after
+# generating config.sandbox.json with scripts/prepare-rootless-sandbox.sh.
+services:
+  artex:
+    environment:
+      ARTEX_CONFIG: /app/config.sandbox.json
+      DOCKER_HOST: unix:///run/artex-docker.sock
+    volumes:
+      # Absolute host sources are also given to sandbox.host_*_dir. The rootless
+      # daemon resolves task bind mounts on the host, not inside this service.
+      - type: bind
+        source: ${ARTEX_SANDBOX_HOST_DATA_DIR:?Set the absolute host data directory}
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARTEX_SANDBOX_HOST_SKILL_DIR:?Set the absolute host skill directory}
+        target: /app/skills
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARTEX_SANDBOX_CONFIG_FILE:?Set the generated sandbox config file}
+        target: /app/config.sandbox.json
+        read_only: true
+        bind:
+          create_host_path: false
+      # Only the root server gets this socket. No task container mounts it.
+      - type: bind
+        source: ${ARTEX_ROOTLESS_DOCKER_SOCKET:?Set the rootless Docker socket}
+        target: /run/artex-docker.sock
+        bind:
+          create_host_path: false

@@ -3,6 +3,7 @@
 package server
 
 import (
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,35 @@ import (
 	"syscall"
 	"testing"
 )
+
+func TestIsolationSelfTestDetectsDockerSocketAsRoot(t *testing.T) {
+	f := newIsolationRootFixture(t)
+	socketDir := filepath.Join(f.tmp, "docker-socket")
+	if err := os.Mkdir(socketDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	socket := filepath.Join(socketDir, "docker.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	t.Setenv("DOCKER_HOST", "unix://"+socket)
+
+	if err := os.Chmod(socket, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	err = IsolationSelfTest(f.priv, f.targets())
+	if err == nil || !strings.Contains(err.Error(), "Bash can connect to the Docker daemon socket "+socket) {
+		t.Fatalf("world-accessible daemon socket must fail isolation: %v", err)
+	}
+	if err := os.Chmod(socket, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := IsolationSelfTest(f.priv, f.targets()); err != nil {
+		t.Fatalf("root-only daemon socket should pass isolation: %v", err)
+	}
+}
 
 // isolationRootFixture is newExecRootFixture with the Bash shim installed, a key
 // directory like /app/keys (0700, jwt.key and secret.key 0600) and a 0600 config.

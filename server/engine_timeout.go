@@ -277,6 +277,7 @@ func (e *Engine) settleTask(ctx context.Context, t *Task, budget bool) {
 	case err != nil:
 		log.Printf("[deadline] task %s failed to settle the terminal state: %v", t.ID, err)
 	case won:
+		e.removeSandbox(t.ID)
 		log.Printf("[deadline] task %s settle complete, terminal state=%s", t.ID, status)
 	default:
 		log.Printf("[deadline] task %s was already terminal when settling, keeping the original state", t.ID)

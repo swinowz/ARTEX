@@ -157,6 +157,11 @@ RUN set -eux; \
     echo "baked nuclei templates: $count"; \
     test "$count" -gt 10000
 
+# A recent CLI is required by rootless daemons: Debian bookworm's docker.io
+# client speaks API 1.41, which current daemons reject. Copy only the CLI;
+# task containers never receive the socket or this binary as a privileged path.
+FROM docker:29.2.1-cli@sha256:cab69e2d0a1a2ea9a1ce1060252f439e83483ae41ec09317aecb33b08a0656a5 AS docker_cli
+
 # ---------------------------------------------------------------- runtime ---
 FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
 ARG TARGETARCH
@@ -166,7 +171,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap \
       arp-scan arping fping iproute2 netdiscover net-tools nfs-common \
       python3-impacket python3-paramiko python3-scapy rpcbind sqlite3 xxd \
-      hashcat hydra john ncrack openssh-client ssh-audit sshpass \
+      hashcat hydra john ncrack openssh-client ssh-audit sshpass docker.io \
     && rm -rf /var/lib/apt/lists/*
 # Node 22 from the official nodejs.org tarball: bookworm's apt nodejs is 18,
 # Playwright requires >=20, and 20 is end-of-life. 22 matches the CI and release
@@ -282,6 +287,7 @@ RUN chmod +x /app/artex /app/start.sh && mkdir -p -m 0700 /app/keys \
 # when the container runs without docker-compose.yml's no-new-privileges.
 RUN find / -xdev -perm /6000 -type f -exec chmod a-s {} +
 COPY skills/ /app/skills/
+COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
 # persistence points: data/ (traffic index, task files, transcripts) and keys/ (jwt.key, secret.key, via ARTEX_JWT_KEY_DIR)
 VOLUME ["/app/data", "/app/keys"]
 EXPOSE 8787 8788

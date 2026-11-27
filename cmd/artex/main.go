@@ -20,6 +20,7 @@ import (
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/egress"
+	"github.com/Autumn-27/artex/sandbox"
 	"github.com/Autumn-27/artex/server"
 )
 
@@ -212,7 +213,32 @@ func run() int {
 	}
 	defer mgr.Close()
 
-	srv := server.New(ctx, mgr, skillDir, *dataDir, keyDir, server.WithSecretScrub(), server.WithTrustedProxies(trusted), server.WithExecPrivilege(priv), server.WithIsolationStatus(isolation))
+	var sandboxOptions []server.Option
+	disk, err := config.Load()
+	if err != nil {
+		log.Printf("[sandbox] config: %v", err)
+		return 1
+	}
+	if disk.Sandbox != nil {
+		sandboxConfig := *disk.Sandbox
+		sandboxConfig.RuntimeDataDir = *dataDir
+		sandboxConfig.SkillDir = skillDir
+		docker, err := sandbox.NewDocker(sandboxConfig, nil)
+		if err != nil {
+			log.Printf("[sandbox] config: %v", err)
+			return 1
+		}
+		service, err := sandbox.NewService(docker, *dataDir)
+		if err != nil {
+			log.Printf("[sandbox] service: %v", err)
+			return 1
+		}
+		sandboxOptions = append(sandboxOptions, server.WithCommandSandbox(service))
+		log.Printf("[sandbox] task and conversational Bash, custom command/script tools and stdio MCP servers use disposable containers; skill tree mounted read-only; server-mediated tools retain their existing transports")
+	}
+	options := []server.Option{server.WithSecretScrub(), server.WithTrustedProxies(trusted), server.WithExecPrivilege(priv), server.WithIsolationStatus(isolation)}
+	options = append(options, sandboxOptions...)
+	srv := server.New(ctx, mgr, skillDir, *dataDir, keyDir, options...)
 	// ReadTimeout bounds how long the request headers and body may take to arrive.
 	// It does not limit how long a handler runs, so an event stream stays open.
 	// WriteTimeout is left unset: a write deadline would cut that stream.

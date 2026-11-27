@@ -14,6 +14,7 @@ import (
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/sandbox"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -93,8 +94,9 @@ func retryableWorkerModelError(reason harness.TerminalReason, err error) bool {
 // (re)installed at runtime (LLM configured from the UI); the loops always run
 // but idle until an LLM is set.
 type Engine struct {
-	m        *Manager
-	debounce time.Duration
+	commandSandbox *sandbox.Service
+	m              *Manager
+	debounce       time.Duration
 
 	bc *Broadcaster // live activity pub/sub (SSE)
 
@@ -312,6 +314,15 @@ func runTaskRoutine(rt *taskRuntime, fn func(context.Context)) {
 // so the next start can reset it to open. Detached chat runs are not in a task
 // WaitGroup; they are counted in inflight and Wait stays until they return.
 func (e *Engine) Wait(ctx context.Context) error {
+	defer func() {
+		if e != nil && e.commandSandbox != nil {
+			cleanup, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := e.commandSandbox.Close(cleanup); err != nil {
+				log.Printf("[sandbox] shutdown cleanup: %v", err)
+			}
+		}
+	}()
 	if e == nil {
 		return nil
 	}
@@ -363,6 +374,7 @@ func waitGroup(ctx context.Context, wg *sync.WaitGroup) error {
 // state for a successfully deleted task. The delete barrier remains installed
 // until cleanup finishes, so no new task operation can race the teardown.
 func (e *Engine) StopTask(taskID string) {
+	defer e.removeSandbox(taskID)
 	e.deleteMu.Lock()
 	e.deleting.Store(taskID, true)
 	e.deleteMu.Unlock()
@@ -1023,6 +1035,7 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 				if won, err := e.m.SetTaskStatusGuarded(t.ID, "done", ""); err != nil {
 					log.Printf("[goalless] task %s failed to settle into done: %v", t.ID, err)
 				} else if won {
+					e.removeSandbox(t.ID)
 					e.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
 						Summary: "All goals have been met, the direct-injected intents have finished executing, and the task is over"})
 				}
@@ -1082,6 +1095,7 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 			// in-flight intents produce no longer matters. The next worker-loop pass claims
 			// nothing new at the terminal gate; the cancelled ones take the "task completed" branch below and end up stopped (not blocked).
 			e.cancelExec(t.ID, agent.AbortGoalMet)
+			e.removeSandbox(t.ID)
 		default:
 			log.Printf("[planner] task %s planning finished", t.ID)
 		}

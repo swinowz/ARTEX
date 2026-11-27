@@ -23,6 +23,7 @@ import (
 // assets, judges whether the task goal is met, and emits 0..N exploration intents
 // into the frontier. It is the sole intent generator.
 type Planner struct {
+	sandbox           CommandSandbox
 	findingRecorder   FindingRecorder
 	triage            TriageClient // advisory decision-model client (agent/triage.go); nil = off
 	prov              llm.Provider
@@ -65,6 +66,8 @@ func (p *Planner) SetCompactionWindowResolver(fn func() int) { p.windowFn = fn }
 // SetCompactor wires the cold-node compactor (cold-digest §7). Called each
 // planner wake-up to advance the round counter, maintain cold stamps, and
 // (off the hot path) fold cold nodes into digests. nil = feature disabled.
+func (p *Planner) SetSandbox(s CommandSandbox) { p.sandbox = s }
+
 func (p *Planner) SetCompactor(c *Compactor) { p.compactor = c }
 
 // SetNonStreaming wires a resolver deciding whether runs use the non-streaming
@@ -544,8 +547,8 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	// Domain tools + the basic default tool set (Read/Write/Edit/MultiEdit/LS/Glob/Grep/Bash).
 	// When the asset-coverage feature is off, drop add_task_scope/list_untested_assets (not in the prompt).
 	base := append(tsx.DropCoverageTools(tsx.PlannerTools()), defaultTools(p.workDir)...)
-	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
-	tools, def, cleanup := AugmentTools(WithToolQuery(ctx, plannerToolQuery(goal, triggers)), "planner", base)
+	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, TaskSandbox: p.sandbox != nil, ExplorationID: explorationID(ts)})
+	tools, def, cleanup := assembleTaskTools(WithToolQuery(ctx, plannerToolQuery(goal, triggers)), "planner", base, p.sandbox, taskID)
 	defer cleanup()
 	// The key situation (just-finished intents + the pre-fetched full graph) goes into
 	// [this round's user input] (see input below); the system prompt keeps only the
@@ -589,11 +592,12 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	if tc.DeadlineUnix > 0 {
 		settle = wrapupSettlementForTask("planner", nil, clamped)
 	}
+	executionTools := withWebFetch(ctx, tools, p.proxyAddr, p.proxyCACert)
 	opts := agentcore.Options{
 		Provider:        p.prov,
 		SystemPrompt:    system,
 		DynamicBoundary: boundary,
-		Tools:           withWebFetch(ctx, tools, p.proxyAddr, p.proxyCACert), // WebFetch: route through the recording proxy for traceability; load the proxy CA to verify MITM-re-signed HTTPS certs; every redirect hop is gated
+		Tools:           executionTools, // WebFetch: route through the recording proxy for traceability; load the proxy CA to verify MITM-re-signed HTTPS certs; every redirect hop is gated
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
