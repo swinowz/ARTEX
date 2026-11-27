@@ -95,14 +95,18 @@ func TestLegacySSEClientDiscoverAndCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	tools, err := c.Tools(ctx)
+	// Discovery's context may end while the SSE session is still in use.
+	cancel()
+	callCtx, callCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer callCancel()
+	tools, err := c.Tools(callCtx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(tools) != 1 || !strings.Contains(tools[0].Name(), "echo") {
 		t.Fatalf("unexpected tools: %#v", tools)
 	}
-	got, err := c.Call(ctx, "echo", map[string]any{"value": "x"})
+	got, err := c.Call(callCtx, "echo", map[string]any{"value": "x"})
 	if err != nil || got != "ok" {
 		t.Fatalf("Call() = %q, %v", got, err)
 	}
@@ -158,6 +162,27 @@ func TestReadSSEEndpointDefaultPort(t *testing.T) {
 	}
 }
 
+func TestSSERejectsOversizedLines(t *testing.T) {
+	base, err := url.Parse("https://mcp.example.com/sse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oversized := "data: " + strings.Repeat("x", mcpMaxRPCBytes) + "\n"
+	if _, err := readSSEEndpoint(bufio.NewReader(strings.NewReader(oversized)), base); err == nil || !strings.Contains(err.Error(), "sse line exceeds") {
+		t.Fatalf("oversized endpoint: %v", err)
+	}
+	c := &Client{streamDone: make(chan struct{}), streamErr: make(chan error, 1), pending: make(map[int]chan *rpcResponse)}
+	c.readLegacySSE(bufio.NewReader(strings.NewReader(oversized)))
+	select {
+	case err := <-c.streamErr:
+		if !strings.Contains(err.Error(), "sse line exceeds") {
+			t.Fatalf("oversized message: %v", err)
+		}
+	default:
+		t.Fatal("oversized legacy SSE message was accepted")
+	}
+}
+
 func TestParseMCPURL(t *testing.T) {
 	for _, raw := range []string{"ftp://x/y", "not-a-url", "http:///nohost", ""} {
 		if _, err := parseMCPURL(raw); err == nil {
@@ -184,6 +209,24 @@ func TestLegacySSERefusesCrossOriginEndpoint(t *testing.T) {
 	defer cancel()
 	if _, err := NewSSE(ctx, "test", srv.URL+"/sse", nil, false); err == nil {
 		t.Fatal("cross-origin SSE endpoint accepted")
+	}
+}
+
+func TestLegacySSEEndpointWaitHonorsContextDeadline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if _, err := NewSSE(ctx, "silent", srv.URL, nil, false); err == nil {
+		t.Fatal("SSE endpoint wait ignored the context deadline")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("SSE endpoint wait took %s after context deadline", elapsed)
 	}
 }
 

@@ -6,8 +6,10 @@ import (
 	"log"
 	"time"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/mcphttp"
+	"github.com/Autumn-27/artex/sandbox"
 	"github.com/Autumn-27/norma/mcp"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -49,6 +51,30 @@ func connectMCP(ctx context.Context, m *db.MCPServer, priv ExecPrivilege) (mcpCl
 	default:
 		return nil, fmt.Errorf("unknown transport %q", m.Transport)
 	}
+}
+
+// Agent runs launch stdio MCP servers inside their task or session container.
+// Administrative discovery uses connectMCP directly with the executor identity.
+func connectMCPForRun(ctx context.Context, m *db.MCPServer, priv ExecPrivilege, taskSandbox *sandbox.Service) (mcpClient, error) {
+	info := agent.RunInfoFrom(ctx)
+	if taskSandbox == nil || m.Transport != "stdio" {
+		return connectMCP(ctx, m, priv)
+	}
+	if info.SessionSandbox {
+		command, args, err := taskSandbox.StdioCommandSession(ctx, info.SessionSandboxKey, info.SessionSandboxRoot, m.Command, jsonStrSlice(m.Args), jsonStrMap(m.Env))
+		if err != nil {
+			return nil, err
+		}
+		return mcp.NewStdioClient(ctx, m.Name, command, nil, args...)
+	}
+	if !info.TaskSandbox || info.TaskID <= 0 {
+		return nil, fmt.Errorf("MCP stdio sandbox run identity is unavailable")
+	}
+	command, args, err := taskSandbox.StdioCommand(ctx, info.TaskID, m.Command, jsonStrSlice(m.Args), jsonStrMap(m.Env))
+	if err != nil {
+		return nil, err
+	}
+	return mcp.NewStdioClient(ctx, m.Name, command, nil, args...)
 }
 
 // discoverAndCacheMCP connects to one MCP, lists its tools, and persists the tool

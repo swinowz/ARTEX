@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Autumn-27/artex/sandbox"
 	"io/fs"
 	"net/url"
 	"os"
@@ -29,9 +30,10 @@ type Database struct {
 
 // Config is the on-disk config file shape.
 type Config struct {
-	Database       Database       `json:"database"`
-	SkillDir       string         `json:"skill_dir"`
-	TaskUserAgents TaskUserAgents `json:"task_user_agents,omitempty"`
+	Sandbox        *sandbox.Config `json:"sandbox,omitempty"`
+	Database       Database        `json:"database"`
+	SkillDir       string          `json:"skill_dir"`
+	TaskUserAgents TaskUserAgents  `json:"task_user_agents,omitempty"`
 }
 
 // BaseDir is the directory that anchors all runtime artifacts (config.json and

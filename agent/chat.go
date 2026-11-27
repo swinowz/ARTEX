@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,10 +34,11 @@ type ChatAgent struct {
 	proxyAddr      string
 	proxyCACert    string
 	webSearch      WebSearchOpts
-	guard          *guard.Guard // optional; nil disables intercept hooks for chat
-	nonStreamingFn func() bool  // resolver: use non-streaming (Complete) path? (nil = streaming)
-	noaEnabledFn   func() bool  // resolver: use experimental noa compaction? (nil = off)
-	maxTokensFn    func() int   // resolver: per-reply output cap (nil/0 = send no cap)
+	guard          *guard.Guard   // optional; nil disables intercept hooks for chat
+	sandbox        SessionSandbox // disposable container for each chat turn (nil = host execution)
+	nonStreamingFn func() bool    // resolver: use non-streaming (Complete) path? (nil = streaming)
+	noaEnabledFn   func() bool    // resolver: use experimental noa compaction? (nil = off)
+	maxTokensFn    func() int     // resolver: per-reply output cap (nil/0 = send no cap)
 }
 
 func NewChatAgent(prov llm.Provider, model, workDir string, tx *transcript.Store, window int) *ChatAgent {
@@ -75,6 +77,8 @@ func (c *ChatAgent) SetWebSearch(o WebSearchOpts) { c.webSearch = o }
 // SetGuard attaches a guard (with user-configured intercept rules) to this chat
 // agent. Must be called before Chat; safe to call multiple times.
 func (c *ChatAgent) SetGuard(g *guard.Guard) { c.guard = g }
+
+func (c *ChatAgent) SetSessionSandbox(s SessionSandbox) { c.sandbox = s }
 
 // chatWorkDirSpec returns a working-directory notice appended to every chat
 // agent's system prompt. Mirrors artifactSpec but without pentest-specific
@@ -136,7 +140,7 @@ func sessionDirInside(workDir, sessionWorkDir string) bool {
 // but each agent decides on/off). emit receives each execution step (thinking /
 // tool_use / tool_result / text / result), tagged with the agent key as the
 // worker lane.
-func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message string, maxTurns int, maxDuration time.Duration, webSearch bool, emit func(db.Activity)) (string, error) {
+func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message string, maxTurns int, maxDuration time.Duration, webSearch bool, emit func(db.Activity)) (reply string, err error) {
 	// gate the global web-search opts by this agent's own flag.
 	ws := c.webSearch
 	if !webSearch {
@@ -161,8 +165,15 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	// have no tools-table rows, so they always pass through.
 	base := defaultTools(c.workDir) // file tools confined to sessionWorkDir (filetools.go)
 	ctx = WithRunInfo(ctx, RunInfo{SessionID: sessionID})
+	var sandboxKey string
+	ctx, sandboxKey, err = startSessionSandbox(ctx, c.sandbox, sessionWorkDir)
+	if err != nil {
+		return "", err
+	}
+	defer func() { err = errors.Join(err, finishSessionSandbox(c.sandbox, sandboxKey)) }()
 	tools, def, cleanup := AugmentTools(ctx, agentKey, base)
 	defer cleanup()
+	tools = sessionSandboxTools(tools, c.sandbox, sandboxKey, sessionWorkDir)
 
 	system, boundary := deferredSystem(chatSystem(agentKey, c.workDir, sessionWorkDir), def)
 	opts := agentcore.Options{
@@ -232,11 +243,11 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	// re-unlock skill-gated MCPs from prior Skill() calls in the reloaded history so
 	// revealed tools stay callable across the fresh session.
 	seedUnlockFromHistory(s.Messages(), def.UnlockSkill)
-	text, _, err := captureRunSession(ctx, s, message, func(r db.Activity) {
+	reply, _, err = captureRunSession(ctx, s, message, func(r db.Activity) {
 		if emit != nil {
 			r.Worker = agentKey
 			emit(r)
 		}
 	})
-	return text, err
+	return reply, err
 }

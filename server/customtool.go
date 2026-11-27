@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/egress"
@@ -193,6 +195,14 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 	tc := &actool.ToolContext{WorkingDir: s.m.dir} // run in the project dir, like a real call
+	cleanup := func() error { return nil }
+	if req.Kind == "command" || req.Kind == "script" {
+		ctx, tc, cleanup, err = s.prepareToolTestSandbox(ctx)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
 	var res actool.Result
 	switch req.Kind {
 	case "command":
@@ -206,6 +216,10 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 		return
 	default:
 		writeErr(w, 400, "unknown tool kind: "+req.Kind)
+		return
+	}
+	if err := cleanup(); err != nil {
+		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"output": res.Flatten(), "is_error": res.IsError})
@@ -453,6 +467,15 @@ func (s *Server) runCommandTool(ctx context.Context, key string, execRaw json.Ra
 	if res := intercept.GateRenderedCommand(ctx, key, cmd, renderTemplate(spec.Command, params, identity)); res.Code != "" {
 		return actool.Errorf(guard.TargetBlockMessage(res)), nil
 	}
+	info := agent.RunInfoFrom(ctx)
+	if s.commandSandbox != nil {
+		out, err := s.executeSandboxCommand(ctx, info, tc, cmd, timeoutOr(spec.TimeoutMs, 120000), nil)
+		body := actool.Capture(tc, string(out))
+		if err != nil {
+			return actool.Errorf(body + "\n[container command failed: " + err.Error() + "]"), nil
+		}
+		return actool.Text(body), nil
+	}
 	// Reuse the low-level run Bash also uses (via the Bash CoreTool.Call): it
 	// automatically inherits the safety floor/timeout/proxy env/output overflow. The tool is a peer of Bash sharing that low level, not routed through the Bash tool for the model to call.
 	bashIn, _ := json.Marshal(map[string]any{"command": cmd})
@@ -472,6 +495,28 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 	if strings.TrimSpace(spec.Code) == "" {
 		return actool.Errorf("script code is empty"), nil
 	}
+	info := agent.RunInfoFrom(ctx)
+	if s.commandSandbox != nil {
+		command, err := sandboxPythonCommand(spec.Code, params)
+		if err != nil {
+			return actool.Errorf(err.Error()), nil
+		}
+		var env []string
+		if tc != nil {
+			env = append(env, tc.Env...)
+		}
+		for k, v := range params {
+			if scalar, ok := scalarStr(v); ok {
+				env = append(env, "TOOL_"+strings.ToUpper(k)+"="+scalar)
+			}
+		}
+		out, err := s.executeSandboxCommand(ctx, info, tc, command, timeoutOr(spec.TimeoutMs, 120000), env)
+		body := actool.Capture(tc, string(out))
+		if err != nil {
+			return actool.Errorf(body + "\n[container script failed: " + err.Error() + "]"), nil
+		}
+		return actool.Text(body), nil
+	}
 	interp := s.pythonInterpreter()
 	if interp == "" {
 		return actool.Errorf("no python interpreter configured or detected (set it in system settings)"), nil
@@ -489,6 +534,39 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 		return actool.Errorf(err.Error()), nil
 	}
 	return actool.Text(actool.Capture(tc, body)), nil
+}
+
+func (s *Server) executeSandboxCommand(ctx context.Context, info agent.RunInfo, tc *actool.ToolContext, command string, timeout time.Duration, env []string) ([]byte, error) {
+	if tc == nil || tc.WorkingDir == "" {
+		return nil, errors.New("sandbox requires a working directory")
+	}
+	if env == nil {
+		env = tc.Env
+	}
+	if info.SessionSandbox {
+		return s.commandSandbox.ExecuteSession(ctx, info.SessionSandboxKey, info.SessionSandboxRoot, tc.WorkingDir, command, timeout, env)
+	}
+	if info.TaskSandbox && info.TaskID > 0 {
+		return s.commandSandbox.Execute(ctx, info.TaskID, tc.WorkingDir, command, timeout, env)
+	}
+	return nil, errors.New("sandbox run identity is unavailable")
+}
+
+// Pass code and parameters to Python without writing a host-side script file.
+// The wrapper restores the custom-tool contract: JSON on stdin and scalar
+// TOOL_* variables (the latter are passed separately to the container).
+func sandboxPythonCommand(code string, params map[string]any) (string, error) {
+	data, err := json.Marshal(params)
+	if err != nil {
+		return "", err
+	}
+	const wrapper = `import base64,io,json,sys
+code=base64.b64decode(sys.argv[1]).decode()
+params=json.loads(base64.b64decode(sys.argv[2]))
+sys.stdin=io.StringIO(json.dumps(params))
+sys.argv=['<custom-tool>']
+exec(compile(code,'<custom-tool>','exec'),{'__name__':'__main__','__file__':'<custom-tool>'})`
+	return "python3 -c " + shellQuote(wrapper) + " " + shellQuote(base64.StdEncoding.EncodeToString([]byte(code))) + " " + shellQuote(base64.StdEncoding.EncodeToString(data)), nil
 }
 
 // execPython writes the code to a temp .py under workDir/.tools, runs it via interp
@@ -583,6 +661,30 @@ func (s *Server) runHTTPTool(ctx context.Context, key string, execRaw json.RawMe
 	client.CheckRedirect = intercept.RedirectCheck(key)
 	if intercept.ApplyAssessmentUserAgent(req) {
 		client.CheckRedirect = assessmentRedirectCheck(client.CheckRedirect)
+	}
+	// Configured headers can contain credentials under names net/http does not
+	// recognize as sensitive (for example X-API-Key). A redirect may cross to a
+	// different approved target, but that does not authorize sharing the header.
+	// Keep them on same-origin hops and strip them after the first origin change,
+	// including if a later redirect returns to the original origin.
+	redirectCheck := client.CheckRedirect
+	leftOrigin := false
+	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if !config.SameAssessmentOrigin(req.URL, next.URL) {
+			leftOrigin = true
+		}
+		if leftOrigin {
+			// 307/308 preserve and replay a POST body. The body can contain a
+			// stored credential, so approval of a redirect target must not send it
+			// there. A 301/302/303 converted to a bodyless GET can still proceed.
+			if next.ContentLength > 0 {
+				return errors.New("refusing cross-origin redirect with configured request body")
+			}
+			for name := range spec.Headers {
+				next.Header.Del(name)
+			}
+		}
+		return redirectCheck(next, via)
 	}
 	// The current egress governor paces every request and redirect hop per host
 	// under the noise profile (off by default: the base transport itself). It is

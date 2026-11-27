@@ -33,6 +33,7 @@ import (
 	"github.com/Autumn-27/artex/llmpool"
 	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/artex/report"
+	"github.com/Autumn-27/artex/sandbox"
 	"github.com/Autumn-27/artex/traffic"
 	"github.com/Autumn-27/norma/llm"
 	actool "github.com/Autumn-27/norma/tool"
@@ -47,9 +48,10 @@ var BuildVersion = "dev"
 // Server exposes the ARTEX backend over a JSON HTTP API for the shadcn/ui
 // frontend.
 type Server struct {
-	m      *Manager
-	engine *Engine
-	ctx    context.Context
+	commandSandbox *sandbox.Service
+	m              *Manager
+	engine         *Engine
+	ctx            context.Context
 
 	skillDir string // root directory for skill subdirectories
 	jwtKey   []byte // HS256 signing key loaded from / generated into keyDir/jwt.key
@@ -275,7 +277,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			}
 			return a.TaskTimeoutWrapupMaxTurns, true
 		})
-		wireAgentAugment(m.pg, s.skillDir, s.hostTools, s.execPriv) // wire visible skills/MCP + traffic/orchestration host tools into the agent toolset
+		wireAgentAugment(m.pg, s.skillDir, s.hostTools, s.execPriv, s.commandSandbox) // wire visible skills/MCP + traffic/orchestration host tools into the agent toolset
 		domainReg := buildDomainReg(m.Assets())
 		wireTools(m.pg, domainReg)   // built-in tools table: filter per agent + override description/schema + inject defaults
 		seedPrompts(m.pg)            // seed built-in agent default prompt bodies into agent_prompts (only when empty)
@@ -582,6 +584,9 @@ func (s *Server) applyLLM(cfg agent.Config) error {
 	// chat agent serves MANY custom agents by key → it holds the GLOBAL opts
 	// (backend/key) and gates Enabled per-conversation-agent at Chat time. Conversations always use the active profile.
 	s.chatAgent = agent.NewChatAgent(prov, cfg.Model, s.m.dir, tx, win) // chat page runner
+	if s.commandSandbox != nil {
+		s.chatAgent.SetSessionSandbox(s.commandSandbox)
+	}
 	s.chatAgent.SetProxy(s.m.ProxyAddr(), s.m.ProxyCACert())
 	s.chatAgent.SetWebSearch(s.m.WebSearchOpts())
 	s.chatAgent.SetGuard(s.chatGuard())
@@ -727,6 +732,9 @@ func (s *Server) chatAgentForProfile(id int64) *agent.ChatAgent {
 	}
 	tx := transcript.NewStore(filepath.Join(s.m.dir, "transcripts"))
 	ca := agent.NewChatAgent(s.poolForBinding(id, prov, cfg), cfg.Model, s.m.dir, tx, cfg.CompactionWindow())
+	if s.commandSandbox != nil {
+		ca.SetSessionSandbox(s.commandSandbox)
+	}
 	ca.SetProxy(s.m.ProxyAddr(), s.m.ProxyCACert())
 	ca.SetWebSearch(s.m.WebSearchOpts())
 	ca.SetGuard(s.chatGuard())

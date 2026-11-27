@@ -216,6 +216,11 @@ func NewSSE(ctx context.Context, server, sseURL string, headers map[string]strin
 		hc.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	}
 	streamCtx, cancel := context.WithCancel(context.Background())
+	// The SSE stream outlives the discovery context once initialized, but the
+	// endpoint announcement must obey that context's deadline. Otherwise a
+	// server that opens a stream and never announces an endpoint hangs discovery.
+	stopHandshakeCancel := context.AfterFunc(ctx, cancel)
+	defer stopHandshakeCancel()
 	req, err := http.NewRequestWithContext(streamCtx, http.MethodGet, sseURL, nil)
 	if err != nil {
 		cancel()
@@ -270,7 +275,7 @@ func NewSSE(ctx context.Context, server, sseURL string, headers map[string]strin
 // retarget them.
 func readSSEEndpoint(r *bufio.Reader, base *url.URL) (string, error) {
 	for {
-		line, err := r.ReadString('\n')
+		line, err := readSSELine(r)
 		if err != nil {
 			return "", fmt.Errorf("mcp sse endpoint: %w", err)
 		}
@@ -300,10 +305,27 @@ func readSSEEndpoint(r *bufio.Reader, base *url.URL) (string, error) {
 	}
 }
 
+// readSSELine bounds one line from an untrusted MCP server without reading
+// ahead past the endpoint event (the same reader handles later SSE messages).
+func readSSELine(r *bufio.Reader) (string, error) {
+	var line []byte
+	for {
+		chunk, err := r.ReadSlice('\n')
+		if len(line)+len(chunk) > mcpMaxRPCBytes {
+			return "", fmt.Errorf("mcp: sse line exceeds %d bytes", mcpMaxRPCBytes)
+		}
+		line = append(line, chunk...)
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
+		}
+		return string(line), err
+	}
+}
+
 func (c *Client) readLegacySSE(r *bufio.Reader) {
 	defer close(c.streamDone)
 	for {
-		line, err := r.ReadString('\n')
+		line, err := readSSELine(r)
 		if err != nil {
 			if !errors.Is(err, context.Canceled) {
 				select {

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Autumn-27/artex/db"
@@ -32,6 +33,7 @@ type MainAgent struct {
 	webSearch       WebSearchOpts                          // web_search tool backend selection (off by default)
 	workDir         string                                 // shared work dir (surfaced in prompt as artifact-output target)
 	steerWork       func(intentID int64, msg string) error // engine callback: steer a running work (nil = off)
+	sandbox         SessionSandbox                         // disposable container for each human turn (nil = host execution)
 	nonStreamingFn  func() bool                            // resolver: use non-streaming (Complete) path? (nil = streaming)
 	noaEnabledFn    func() bool                            // resolver: use experimental noa compaction? (nil = off)
 	maxTokensFn     func() int                             // resolver: per-reply output cap (nil/0 = send no cap)
@@ -87,6 +89,8 @@ func (m *MainAgent) SetWebSearch(o WebSearchOpts) { m.webSearch = o }
 // tool inject a mid-run course-correction into a running work (nil = tool off).
 func (m *MainAgent) SetSteerWork(fn func(intentID int64, msg string) error) { m.steerWork = fn }
 
+func (m *MainAgent) SetSessionSandbox(s SessionSandbox) { m.sandbox = s }
+
 // mainAgentDefaultTmpl is the built-in EDITABLE body (section [A]) of the main agent
 // prompt, seeded into agent_prompts. Goal is a {{.Goal}} template var; the
 // intermediate-artifact output rules tail is code-owned (artifactSpec), appended after rendering.
@@ -116,7 +120,7 @@ func mainAgentSystem(goal, dataDir, workDir string) string {
 // text / result) so the main-agent session shows its work — exactly like the
 // worker/planner sessions — not just the final answer. hooks (the task's
 // target-only Guard) sees every tool call; may be nil.
-func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.AssetStore, ts *db.ExplorationStore, goal, message string, hooks harness.HookRunner, emit func(db.Activity), notify, resume func(), notifyGoal func([]string), notifyHint func(string, []string)) (string, error) {
+func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.AssetStore, ts *db.ExplorationStore, goal, message string, hooks harness.HookRunner, emit func(db.Activity), notify, resume func(), notifyGoal func([]string), notifyHint func(string, []string)) (reply string, err error) {
 	tsx := NewToolSet(ts, "human")
 	tsx.SetFindingRecorder(m.findingRecorder)
 	tsx.SetFactTraffic(m.factTraffic)
@@ -133,11 +137,19 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	// domain tools + basic default toolset (Read/Write/Edit/MultiEdit/LS/Glob/Grep/Bash)
 	// when the asset coverage feature is off, drop add_task_scope/list_untested_assets (not in the prompt).
 	base := append(tsx.DropCoverageTools(tsx.MainAgentTools()), defaultTools(m.workDir)...)
+	// Main chat remains available after the task worker container is retired.
+	// A separate container is owned by this turn and mounts only the main run dir.
+	mainDir := ensureRunDir(m.workDir, taskID, 0)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
+	var sandboxKey string
+	ctx, sandboxKey, err = startSessionSandbox(ctx, m.sandbox, mainDir)
+	if err != nil {
+		return "", err
+	}
+	defer func() { err = errors.Join(err, finishSessionSandbox(m.sandbox, sandboxKey)) }()
 	tools, def, cleanup := AugmentTools(ctx, "mainagent", base)
 	defer cleanup()
-	// the main run directory <workDir>/tasks/<taskID>/main, created up front.
-	mainDir := ensureRunDir(m.workDir, taskID, 0)
+	tools = sessionSandboxTools(tools, m.sandbox, sandboxKey, mainDir)
 	ctx = intercept.WithReviewWorkingDirectory(ctx, mainDir)
 	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir), def)
 	opts := agentcore.Options{
@@ -212,11 +224,11 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	// C2: this session is fresh each turn; re-unlock skill-gated MCPs from prior
 	// Skill() calls in the reloaded history so revealed tools stay callable.
 	seedUnlockFromHistory(s.Messages(), def.UnlockSkill)
-	text, _, err := captureRunSession(ctx, s, message, func(r db.Activity) {
+	reply, _, err = captureRunSession(ctx, s, message, func(r db.Activity) {
 		if emit != nil {
 			r.Worker = "mainagent"
 			emit(r)
 		}
 	})
-	return text, err
+	return reply, err
 }

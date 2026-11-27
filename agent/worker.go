@@ -61,6 +61,7 @@ type WebSearchOpts struct {
 }
 
 type Worker struct {
+	sandbox         CommandSandbox
 	findingRecorder FindingRecorder
 	// triage is the advisory decision-model client for closed-list judgements,
 	// handed to the per-run ToolSet (see agent/triage.go). nil = off.
@@ -550,14 +551,10 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// base = built-in worker tools ∪ host tools (traffic) ∪ default tools (incl. Bash);
 	// then augment with the agent's visible skills/MCP. During the SDK settlement
 	// phase, Bash is hidden via Settlement.DisabledTools (no local gating needed).
-	base := append(tsx.DropCoverageTools(tsx.WorkerTools()), w.extraTools...)
-	// The worker deliberately gets no MultiEdit/Glob/Grep: precise file edits use Edit,
-	// searching goes through Bash(grep/find) — narrowing the tool surface and reducing
-	// low-value calls. The rest of the SDK default tools (Read/Write/Edit/LS/Bash/Sleep)
-	// are kept as usual.
+	base := tsx.DropCoverageTools(tsx.WorkerTools())
 	base = append(base, defaultToolsExcept(w.workDir, "MultiEdit", "Glob", "Grep")...)
-	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts), IntentID: intent.ID})
-	tools, def, cleanup := AugmentTools(WithToolQuery(ctx, nodeSummary(intent)), "worker", base)
+	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, TaskSandbox: w.sandbox != nil, ExplorationID: explorationID(ts), IntentID: intent.ID})
+	tools, def, cleanup := assembleWorkerTools(WithToolQuery(ctx, nodeSummary(intent)), base, w.extraTools, w.sandbox, taskID)
 	defer cleanup()
 
 	// The intent is the worker's [sole duty, an invariant across the whole run] → it
@@ -581,6 +578,9 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	workerEnv := newDataEnvelope()
 	overview := renderWorkerGraphOverview(tsx.graphOverviewData(), workerEnv)
 	staticPart, dynamicTail := workerSystemParts(w.proxyAddr, w.proxyCACert, w.workDir, runDir)
+	if w.sandbox != nil {
+		dynamicTail += "\nExecution mode: task container. Bash runs synchronously there; background tasks and interactive shell tools are unavailable. The host recording proxy environment is not inherited. Persist evidence with the file tools in the working directory.\n"
+	}
 	dynamicTail += frameLessonsBlock(w.lessonsBlock)
 	if w.wantConstraints() {
 		dynamicTail += constraintBlock(ts) // inject the operation constraints (if any) into the system prompt; the worker strictly obeys them during execution
@@ -623,11 +623,12 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	if tc.DeadlineUnix > 0 {
 		settle = wrapupSettlementForTask("worker", []string{"Bash"}, clamped)
 	}
+	executionTools := withWebFetch(ctx, tools, w.proxyAddr, w.proxyCACert)
 	opts := agentcore.Options{
 		Provider:        w.prov,
 		SystemPrompt:    system,
 		DynamicBoundary: boundary,
-		Tools:           withWebFetch(ctx, tools, w.proxyAddr, w.proxyCACert),
+		Tools:           executionTools,
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,

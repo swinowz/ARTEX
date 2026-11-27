@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,9 @@ type isolationProbeSpec struct {
 	// the real address the server connects to, never one the self-test picks. The
 	// probe connects to each without a password.
 	DB []isolationProbeDB `json:"db,omitempty"`
+	// DockerSocket is the rootless daemon endpoint used by the server. Agent
+	// processes must not be able to connect to it.
+	DockerSocket string `json:"docker_socket,omitempty"`
 }
 
 type isolationProbeDB struct {
@@ -87,6 +91,9 @@ func IsolationSelfTest(p ExecPrivilege, t IsolationTargets) error {
 // isolationSpec builds the probe's checks from the server's paths.
 func isolationSpec(p ExecPrivilege, t IsolationTargets) isolationProbeSpec {
 	spec := isolationProbeSpec{UID: p.UID, GID: p.GID, ServerPID: os.Getpid()}
+	if socket, ok := strings.CutPrefix(os.Getenv("DOCKER_HOST"), "unix://"); ok && filepath.IsAbs(socket) {
+		spec.DockerSocket = socket
+	}
 	if t.KeyDir != "" {
 		spec.Unreadable = append(spec.Unreadable, filepath.Join(t.KeyDir, "jwt.key"), filepath.Join(t.KeyDir, "secret.key"))
 	}
@@ -352,6 +359,13 @@ func checkIsolationAsExecutor(spec isolationProbeSpec) []string {
 		db := &spec.DB[i]
 		if err := connectWithoutPassword(db); err == nil {
 			fail("Bash opened a database session as %q on %s:%d without the server's password", db.User, db.Host, db.Port)
+		}
+	}
+	if spec.DockerSocket != "" {
+		conn, err := net.DialTimeout("unix", spec.DockerSocket, 2*time.Second)
+		if err == nil {
+			conn.Close()
+			fail("Bash can connect to the Docker daemon socket %s", spec.DockerSocket)
 		}
 	}
 	return failures
