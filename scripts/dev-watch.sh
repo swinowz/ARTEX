@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # Backend hot reload without extra tools: rebuild and restart the Go backend when a
-# .go file, go.mod or go.sum changes. Port defaults to 8790 so it does not clash with
-# the SSH tunnel to the lab ARTEX (127.0.0.1:8787) or dev.sh (8787/8788).
+# .go file, go.mod or go.sum changes. Port defaults to 127.0.0.1:8790 so it does not
+# clash with an SSH tunnel to a lab ARTEX (127.0.0.1:8787) or default dev.sh (8787/8788).
 #
-# Needs a PostgreSQL DSN: set ARTEX_PG_DSN (see config.example.json), e.g.
-#   export ARTEX_PG_DSN='postgres://artex:PASSWORD@127.0.0.1:5433/artex?sslmode=disable'
-# Do not commit the DSN; keep it in your shell or in an untracked file.
+# Environment variables:
+#   ARTEX_DEV_ADDR   backend listen address (default 127.0.0.1:8790)
+#   ARTEX_DEV_PROXY  optional traffic proxy listen address (passed as -proxy)
+#   ARTEX_PG_DSN     PostgreSQL DSN (see config.example.json / docker-compose.yml);
+#                    never commit credentials — keep them in your shell or untracked config.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 ADDR="${ARTEX_DEV_ADDR:-127.0.0.1:8790}"
-BIN="$(mktemp -d)/artex-dev"
+PROXY="${ARTEX_DEV_PROXY:-}"
+TMPDIR_WATCH="$(mktemp -d)"
+BIN="${TMPDIR_WATCH}/artex-dev"
 PID=""
 
 stamp() { find . \( -path ./web -o -path ./.git -o -path ./node_modules \) -prune -o \
@@ -19,16 +23,21 @@ start() {
   echo "[dev-watch] building…"
   # -buildvcs=false: a git worktree or shallow clone can fail VCS stamping (git exit 128).
   if go build -buildvcs=false -o "$BIN" ./cmd/artex; then
-    "$BIN" -addr "$ADDR" &
+    local -a args=(-addr "$ADDR")
+    if [ -n "$PROXY" ]; then
+      args+=(-proxy "$PROXY")
+    fi
+    "$BIN" "${args[@]}" &
     PID=$!
-    echo "[dev-watch] backend pid $PID on http://$ADDR"
+    echo "[dev-watch] backend pid $PID on http://$ADDR${PROXY:+ (proxy $PROXY)}"
   else
     echo "[dev-watch] build failed; waiting for next change"
     PID=""
   fi
 }
-stop() { [ -n "$PID" ] && kill "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; PID=""; }
-trap 'stop; exit 0' INT TERM EXIT
+stop() { [ -n "$PID" ] && kill "$PID" 2>/dev/null || true; [ -n "$PID" ] && wait "$PID" 2>/dev/null || true; PID=""; }
+cleanup() { stop; rm -rf "$TMPDIR_WATCH"; }
+trap 'cleanup; exit 0' INT TERM EXIT
 
 last="$(stamp)"
 start

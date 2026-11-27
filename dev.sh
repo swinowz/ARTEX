@@ -1,24 +1,47 @@
 #!/usr/bin/env bash
-# Dev mode: run the backend (:8787) + traffic proxy (:8788) together with the frontend next dev (:5173).
-# The frontend reverse-proxies /api to the backend; Ctrl-C exits everything.
+# Dev mode: run the Go backend (with hot reload via scripts/dev-watch.sh) + traffic proxy
+# together with the Next.js dev server (HMR + /api reverse-proxied to the backend).
 #
-# For the single-binary mode (frontend embedded), see the "Single binary" section of the README; it does not use this script.
+# Configurable ports/addresses:
+#   ARTEX_DEV_ADDR    backend listen address (default 127.0.0.1:8787)
+#   ARTEX_DEV_PROXY   traffic proxy listen address (default 127.0.0.1:8788; empty disables -proxy)
+#   ARTEX_WEB_PORT    Next.js dev server port (default 5173)
+#   ARTEX_DEV_WATCH   1 (default) to auto-rebuild/restart backend on .go changes; 0 for plain go run
+#   AUTOPENTEST_API   override frontend /api proxy target (defaults to http://<ARTEX_DEV_ADDR>)
+#
+# PostgreSQL: expects a running PostgreSQL instance (e.g. `docker compose up -d postgres`
+# using docker-compose.yml) and ARTEX_PG_DSN or config.json configured outside git.
 set -euo pipefail
 cd "$(dirname "$0")"
+
+ADDR="${ARTEX_DEV_ADDR:-127.0.0.1:8787}"
+PROXY="${ARTEX_DEV_PROXY-127.0.0.1:8788}"
+WEB_PORT="${ARTEX_WEB_PORT:-5173}"
+WATCH="${ARTEX_DEV_WATCH:-1}"
+
+if [ -z "${AUTOPENTEST_API:-}" ]; then
+  case "$ADDR" in
+    :*) AUTOPENTEST_API="http://127.0.0.1${ADDR}" ;;
+    *)  AUTOPENTEST_API="http://${ADDR}" ;;
+  esac
+fi
 
 # On exit, kill all child processes in this process group (backend + frontend).
 cleanup() { kill 0 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
-# Backend (plain go run, frontend not embedded); the concurrent work agent count is configured under "System Settings".
-# Run this script as your own user: the backend then starts with agent isolation degraded, which it logs in a
-# banner and shows in the web UI (agents run as you and can read the keys, config and database credentials).
-# Agent isolation needs Linux and a root server; use the Docker image for it. As root, a failed isolation
-# self-test stops the start (server/isolation.go).
-go run ./cmd/artex -addr :8787 -proxy 127.0.0.1:8788 &
+if [ "$WATCH" = "1" ]; then
+  ARTEX_DEV_ADDR="$ADDR" ARTEX_DEV_PROXY="$PROXY" bash ./scripts/dev-watch.sh &
+else
+  declare -a args=(-addr "$ADDR")
+  if [ -n "$PROXY" ]; then
+    args+=(-proxy "$PROXY")
+  fi
+  go run ./cmd/artex "${args[@]}" &
+fi
 
-# Frontend hot reload (Vite/Next dev server, /api reverse-proxied to :8787).
-( cd web && npm run dev ) &
+# Frontend hot reload (Next.js dev server, /api reverse-proxied to AUTOPENTEST_API).
+( cd web && AUTOPENTEST_API="$AUTOPENTEST_API" npm run dev -- -p "$WEB_PORT" ) &
 
-echo "[dev] backend :8787 / proxy :8788 / frontend http://localhost:5173  (Ctrl-C to exit)"
+echo "[dev] backend http://${ADDR#http://} (api=${AUTOPENTEST_API}) / proxy ${PROXY:-off} / frontend http://localhost:${WEB_PORT}  (Ctrl-C to exit)"
 wait
