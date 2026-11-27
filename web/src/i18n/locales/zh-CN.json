@@ -2761,5 +2761,13 @@
   "Scale": "扩容",
   "Add workers to this running task without recreating it. Lowering does nothing.": "在不重建任务的情况下向运行中的任务增加 Worker。调小不会产生效果。",
   "Applying…": "应用中…",
-  "Apply": "应用"
+  "Apply": "应用",
+  "Overseer": "监督员",
+  "Overseer · worker guidance": "监督员 · 执行器指导",
+  "Agent enabled": "智能体已启用",
+  "Could not load Overseer settings": "无法加载监督员设置",
+  "Overseer settings saved": "监督员设置已保存",
+  "Supervises active tasks and guides workers. Disabled until you enable it here.": "监督活动任务并指导执行器。在此启用前保持关闭。",
+  "Enable Overseer": "启用监督员",
+  "Overseer model profile": "监督员模型配置"
 }

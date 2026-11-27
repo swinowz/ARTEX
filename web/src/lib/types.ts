@@ -700,6 +700,7 @@ export interface LLMTransition {
 
 export interface TaskLLMResolution {
   profile_id?: number;
+  enabled?: boolean;
   name: string;
   format: string;
   model: string;
@@ -711,6 +712,7 @@ export interface TaskLLMResolution {
 export interface TaskLLMResolutions {
   mainagent: TaskLLMResolution;
   planner: TaskLLMResolution;
+  overseer: TaskLLMResolution;
   worker: TaskLLMResolution;
 }
 
@@ -780,8 +782,8 @@ export interface LogLine {
   text: string;
 }
 
-export type SessionRole = "mainagent" | "planner" | "worker" | "system";
-export type SessionStatus = "running" | "paused" | "done" | "blocked" | "exhausted" | "pending" | "stopped" | "deleted";
+export type SessionRole = "mainagent" | "planner" | "overseer" | "worker" | "system";
+export type SessionStatus = "running" | "paused" | "done" | "blocked" | "exhausted" | "pending" | "stopped" | "deleted" | "disabled";
 
 // Daily token aggregate bucket (GET /api/tokens/daily).
 export interface DailyTokenBucket {

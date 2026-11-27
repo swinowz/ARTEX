@@ -97,6 +97,26 @@ func TestOpenSeed(t *testing.T) {
 	if agents != wantAgents {
 		t.Fatalf("want %d builtin agents, got %d", wantAgents, agents)
 	}
+	overseer, err := d.GetAgentByKey("overseer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overseer == nil || overseer.Role != "overseer" || overseer.Enabled || !overseer.Builtin {
+		t.Fatalf("Overseer must be seeded as an opt-in built-in agent: %+v", overseer)
+	}
+	if err := d.SetAgentEnabled("overseer", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.seedBuiltins(); err != nil {
+		t.Fatal(err)
+	}
+	overseer, err = d.GetAgentByKey("overseer")
+	if err != nil || overseer == nil || !overseer.Enabled {
+		t.Fatalf("startup seed reset the user's Overseer choice: %+v, %v", overseer, err)
+	}
+	if err := d.SetAgentEnabled("overseer", false); err != nil {
+		t.Fatal(err)
+	}
 
 	// planner should have at least its seeded catalog vars
 	wantPlannerVars := 0

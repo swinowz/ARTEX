@@ -152,6 +152,7 @@ function sessionKeyOf(a: Activity): string {
   if (a.worker === "system" || a.kind === "llm_switch" || a.kind === "llm_failover") return "system";
   if (a.worker === "mainagent") return `main:${a.main_seg ?? 0}`; // one key per conversation segment
   if (a.worker === "planner") return "plan";
+  if (a.worker === "overseer") return "overseer";
   if (a.intent_id) return `intent:${a.intent_id}`;
   return "unknown";
 }
@@ -187,6 +188,8 @@ function statusIcon(status: SessionStatus) {
     case "exhausted": // steps exhausted (hit max_turns)
       return <ZapOffIcon className="size-3.5 text-violet-500" />;
     case "deleted": // soft-deleted by the user
+      return <CircleSlashIcon className="size-3.5 text-muted-foreground" />;
+    case "disabled":
       return <CircleSlashIcon className="size-3.5 text-muted-foreground" />;
   }
 }
@@ -224,6 +227,7 @@ TokenMetrics.displayName = "TokenMetrics";
 const roleMeta = {
   mainagent: { label: t("Main Agent"), icon: UserIcon },
   planner: { label: t("Planner"), icon: BrainIcon },
+  overseer: { label: t("Overseer"), icon: BrainIcon },
   worker: { label: t("Workers"), icon: RadioIcon },
   system: { label: t("System audit"), icon: HistoryIcon },
 } as const;
@@ -263,6 +267,15 @@ const PLANNER_SESSION: Session = {
   last_activity: "",
 };
 
+const OVERSEER_SESSION: Session = {
+  id: "s-overseer",
+  role: "overseer",
+  title: t("Overseer · worker guidance"),
+  status: "running",
+  live: false,
+  last_activity: "",
+};
+
 // LLM provider switches are task-level audit events rather than agent output. The
 // history endpoint has no "system" filter, so this fixed session is populated by
 // scanning the generic incremental activity endpoint and then tailed by task SSE.
@@ -280,6 +293,7 @@ const SYSTEM_SESSION: Session = {
 function keyForSession(s: Session): string {
   if (s.role === "mainagent") return `main:${s.seg ?? 0}`;
   if (s.role === "planner") return "plan";
+  if (s.role === "overseer") return "overseer";
   if (s.role === "system") return "system";
   return `intent:${s.intent_id}`;
 }
@@ -347,7 +361,7 @@ function SessionItem({
 }) {
   const icon = deleted ? (
     <Trash2Icon className="size-3.5 text-destructive" />
-  ) : s.role === "worker" ? (
+  ) : s.role === "worker" || (s.role === "overseer" && s.status === "disabled") ? (
     statusIcon(s.status)
   ) : s.live ? (
     <Loader2Icon className="size-3.5 animate-spin text-blue-500" />
@@ -477,6 +491,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
       return { ...MAIN_SESSION, id: mainSessionId(seg), seg, title: mainSessionTitle(seg), live: false };
     }
     if (source.session === "plan") return { ...PLANNER_SESSION, live: false };
+    if (source.session === "overseer") return { ...OVERSEER_SESSION, live: false };
     if (source.session.startsWith("intent:")) {
       const id = source.session.slice(7);
       return {
@@ -1176,6 +1191,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
       if (!pendingIntercepts.length) return false;
       if (s.role === "mainagent") return pendingIntercepts.some((r) => r.agent_name === "mainagent");
       if (s.role === "planner") return pendingIntercepts.some((r) => r.agent_name === "planner");
+      if (s.role === "overseer") return pendingIntercepts.some((r) => r.agent_name === "overseer");
       // Worker: extract intent ID from "work#N · #<intentID>"
       return pendingIntercepts.some((r) => {
         const m = r.agent_name.match(/·\s*#(\d+)$/);
@@ -1197,6 +1213,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
   );
   const currentMainKey = mainSessionKey(currentSeg);
   const plannerLive = recentLive("plan");
+  const overseerLive = recentLive("overseer");
 
   // Which main segment is streaming RIGHT NOW. A main turn is serialized per task, so at
   // most one segment is live. Gate on the real running flag (sending / mainChatRunning)
@@ -1239,15 +1256,18 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
   );
 
   const sessions = React.useMemo(() => {
-    const items = [...mainSessions, { ...PLANNER_SESSION, live: plannerLive }, ...workerSessions, SYSTEM_SESSION];
+    const overseerEnabled = llmResolutions?.overseer?.enabled ?? false;
+    const overseerSession: Session = { ...OVERSEER_SESSION, status: overseerEnabled ? "running" : "disabled", live: overseerEnabled && overseerLive };
+    const items = [...mainSessions, { ...PLANNER_SESSION, live: plannerLive }, overseerSession, ...workerSessions, SYSTEM_SESSION];
     const located = focusSession ?? retainedSession;
     if (located && !items.some((s) => s.id === located.id)) items.push(located);
     return items;
-  }, [mainSessions, workerSessions, plannerLive, focusSession, retainedSession]);
+  }, [mainSessions, workerSessions, plannerLive, overseerLive, llmResolutions?.overseer?.enabled, focusSession, retainedSession]);
 
   const grouped = {
     mainagent: sessions.filter((s) => s.role === "mainagent"),
     planner: sessions.filter((s) => s.role === "planner"),
+    overseer: sessions.filter((s) => s.role === "overseer"),
     worker: sessions.filter((s) => s.role === "worker"),
     system: sessions.filter((s) => s.role === "system"),
   };
@@ -1261,7 +1281,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
         : null,
   );
   const isMain = active.role === "mainagent";
-  const isPlanner = active.role === "planner";
+  const isPlanner = active.role === "planner" || active.role === "overseer";
   const isSystem = active.role === "system";
   const activeKey = keyForSession(active);
   const activeState = store[activeKey];
@@ -1552,6 +1572,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
     if (!llmResolutions || session.inherited || session.role === "system") return undefined;
     if (session.role === "mainagent") return llmResolutions.mainagent;
     if (session.role === "planner") return llmResolutions.planner;
+    if (session.role === "overseer") return llmResolutions.overseer;
     return llmResolutions.worker;
   };
   const activeResolution = resolutionForSession(active);
@@ -1657,7 +1678,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
             )}
           >
             <div className="flex w-full flex-col gap-3 p-2">
-              {(["mainagent", "planner", "system", "worker"] as const).map((role) => {
+              {(["mainagent", "planner", "overseer", "system", "worker"] as const).map((role) => {
                 const items = grouped[role];
                 if (!items.length) return null;
                 const Meta = roleMeta[role];

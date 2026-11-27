@@ -653,6 +653,12 @@ func (d *DB) DeleteAgent(key string) error {
 	return err
 }
 
+// SetAgentEnabled controls whether a built-in or custom agent is active.
+func (d *DB) SetAgentEnabled(key string, enabled bool) error {
+	_, err := d.Exec(`UPDATE agents SET enabled=$2 WHERE key=$1`, key, enabled)
+	return err
+}
+
 // SetAgentMaxTurns updates an agent's max_turns (0 = unlimited).
 func (d *DB) SetAgentMaxTurns(key string, maxTurns int) error {
 	if maxTurns < 0 {

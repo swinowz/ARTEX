@@ -968,6 +968,10 @@ function ProfileSheet({
 
 export default function LLMPage() {
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
+  const [overseerEnabled, setOverseerEnabled] = React.useState(false);
+  const [overseerProfile, setOverseerProfile] = React.useState("__follow__");
+  const [overseerLoaded, setOverseerLoaded] = React.useState(false);
+  const [savingOverseer, setSavingOverseer] = React.useState(false);
   const [pool, setPool] = React.useState<LLMPoolStatus | null>(null);
   const [poolOpen, setPoolOpen] = React.useState(false);
   // The drawer's open flag and its content are stored separately: editing stays put on close, otherwise during the closing animation the title would flash
@@ -996,9 +1000,38 @@ export default function LLMPage() {
     await loadPool();
   }, [loadPool]);
 
+  const loadOverseer = React.useCallback(async () => {
+    try {
+      const agent = (await api.agents()).find((a) => a.key === "overseer");
+      if (!agent) return;
+      setOverseerEnabled(agent.enabled);
+      setOverseerProfile(agent.llm_profile_id == null ? "__follow__" : String(agent.llm_profile_id));
+      setOverseerLoaded(true);
+    } catch {
+      toast.error(t("Could not load Overseer settings"));
+    }
+  }, []);
+
   React.useEffect(() => {
     void load();
-  }, [load]);
+    void loadOverseer();
+  }, [load, loadOverseer]);
+
+  async function saveOverseer() {
+    setSavingOverseer(true);
+    try {
+      await api.saveAgentConfig("overseer", {
+        enabled: overseerEnabled,
+        llm_profile_id: overseerProfile === "__follow__" ? null : Number(overseerProfile),
+      });
+      await loadOverseer();
+      toast.success(t("Overseer settings saved"));
+    } catch (error) {
+      toast.error(t("Save failed: {error}", { error: (error as Error).message }));
+    } finally {
+      setSavingOverseer(false);
+    }
+  }
 
   // The health badge on each card reads pool state by profile id.
   const health = React.useMemo(() => {
@@ -1066,6 +1099,38 @@ export default function LLMPage() {
         </TabsList>
 
         <TabsContent value="profiles" className="mt-4">
+          <Card className="mb-4 gap-0 py-4">
+            <CardContent className="grid gap-4 px-4">
+              <div>
+                <h2 className="font-medium">{t("Overseer")}</h2>
+                <p className="text-muted-foreground text-sm">
+                  {t("Supervises active tasks and guides workers. Disabled until you enable it here.")}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Switch id="overseer-enabled" checked={overseerEnabled} disabled={!overseerLoaded || savingOverseer} onCheckedChange={setOverseerEnabled} />
+                  <Label htmlFor="overseer-enabled">{t("Enable Overseer")}</Label>
+                </div>
+                <div className="grid min-w-56 gap-1.5">
+                  <Label htmlFor="overseer-profile">{t("Overseer model profile")}</Label>
+                  <Select value={overseerProfile} onValueChange={setOverseerProfile} disabled={!overseerLoaded || savingOverseer}>
+                    <SelectTrigger id="overseer-profile"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__follow__">{t("Follow task / globally active profile")}</SelectItem>
+                      {profiles.map((profile) => (
+                        <SelectItem key={profile.id} value={profile.id}>{profile.name} ({profile.model})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button size="sm" onClick={() => void saveOverseer()} disabled={!overseerLoaded || savingOverseer}>
+                  {savingOverseer ? <Loader2Icon className="animate-spin" /> : <SaveIcon />}
+                  {t("Save config")}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {profiles.map((p) => {
               const h = healthOf(p, health.get(p.id));

@@ -138,6 +138,16 @@ First **accurately extract from the context the task_id, the exploration node no
 - **Concise**: no boilerplate, no filler, no restating the template itself.
 - Write in **English** throughout. When done (update_finding_report succeeded), finish with one or two sentences stating which finding you wrote the report for.`
 
+// Overseer has no attack tools. The engine validates every proposed action
+// against the task before routing it to a worker or the intent frontier.
+const overseerDefaultTmpl = `You are the Overseer for one authorized ARTEX task. Watch the workers and keep their work productive. Use the task goal, recent intents, findings, facts and activity to identify repeated attempts, stalled work, and incomplete evidence. Do not run attacks yourself.
+
+Return exactly one JSON object with "assessment" (brief explanation) and "actions" (zero to two objects). Valid actions:
+{"type":"guide_worker","intent_id":123,"instruction":"specific course correction for this running worker"}
+{"type":"deepen_finding","finding_id":456,"instruction":"specific follow-up needed to verify this finding"}
+
+Only use ids present in the current task snapshot. Prefer no action when workers are making progress. Do not repeat an unchanged instruction or infer a vulnerability from unverified output. For an unverified finding, ask for exact proving command output and structured evidence. Output JSON only.`
+
 // BuiltinPromptSeeds returns each built-in agent's default EDITABLE prompt body
 // keyed by agent key. The server seeds these into agent_prompts on startup (only
 // when an agent has no prompt yet), so the DB becomes the authoritative, editable
@@ -148,6 +158,7 @@ func BuiltinPromptSeeds() map[string]string {
 		"planner":   plannerDefaultTmpl,
 		"mainagent": mainAgentDefaultTmpl,
 		"worker":    workerDefaultTmpl,
+		"overseer":  overseerDefaultTmpl,
 		"auto":      autoDefaultTmpl,
 		"pentest":   pentestDefaultTmpl,
 	}

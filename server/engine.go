@@ -161,6 +161,9 @@ type Engine struct {
 	// readiness reports whether a global LLM provider is configured — the signal behind
 	// Ready()/the llm_configured indicator. Wired once at startup; nil → not ready.
 	readiness func() bool
+	// overseerRun owns one supervisory loop per task. It resolves its profile and
+	// enabled state on each round, so Agent Management edits take effect live.
+	overseerRun func(context.Context, *Task)
 }
 
 type taskRuntime struct {
@@ -851,6 +854,8 @@ func (e *Engine) appendActivity(t *Task, r db.Activity) (int64, error) {
 // Ready() / the llm_configured indicator). Called once at startup.
 func (e *Engine) SetReadiness(fn func() bool) { e.readiness = fn }
 
+func (e *Engine) SetOverseerRunner(fn func(context.Context, *Task)) { e.overseerRun = fn }
+
 // SetAgentResolver installs a per-task planner/worker resolver (wired by the server).
 // Called once at startup before any task loop runs, so no lock is needed on reads.
 func (e *Engine) SetAgentResolver(fn func(t *Task) (*agent.Planner, *agent.Worker)) {
@@ -908,7 +913,11 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 		t.Notify() // already running — just nudge a planning round
 		return
 	}
-	rt := e.registerTaskRoutines(ctx, t.ID, 2+workers, workers)
+	count := 2 + workers
+	if e.overseerRun != nil {
+		count++
+	}
+	rt := e.registerTaskRoutines(ctx, t.ID, count, workers)
 	e.deleteMu.RUnlock()
 	if rt == nil {
 		e.started.Delete(t.ID)
@@ -917,6 +926,9 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 	e.touch(t.ID)
 	runTaskRoutine(rt, func(loopCtx context.Context) { e.plannerLoop(loopCtx, t) })
 	runTaskRoutine(rt, func(loopCtx context.Context) { e.claimSweepLoop(loopCtx, t) })
+	if e.overseerRun != nil {
+		runTaskRoutine(rt, func(loopCtx context.Context) { e.overseerRun(loopCtx, t) })
+	}
 	for i := 0; i < workers; i++ {
 		name := fmt.Sprintf("work#%d", i+1)
 		runTaskRoutine(rt, func(loopCtx context.Context) { e.workerLoop(loopCtx, t, name) })

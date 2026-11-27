@@ -9,6 +9,7 @@ import (
 
 type taskLLMResolution struct {
 	ProfileID *int64 `json:"profile_id,omitempty"`
+	Enabled   *bool  `json:"enabled,omitempty"`
 	Name      string `json:"name"`
 	Format    string `json:"format"`
 	Model     string `json:"model"`
@@ -111,6 +112,7 @@ func (s *Server) taskLLMResolutionHandler(w http.ResponseWriter, r *http.Request
 	for responseKey, agentKey := range map[string]string{
 		"mainagent": "mainagent",
 		"planner":   "planner",
+		"overseer":  "overseer",
 		"worker":    "worker",
 	} {
 		resolved, err := s.resolveTaskRoleLLM(t, agentKey)
@@ -120,5 +122,14 @@ func (s *Server) taskLLMResolutionHandler(w http.ResponseWriter, r *http.Request
 		}
 		roles[responseKey] = resolved
 	}
+	overseer, err := s.m.pg.GetAgentByKey("overseer")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	enabled := overseer != nil && overseer.Enabled
+	resolved := roles["overseer"]
+	resolved.Enabled = &enabled
+	roles["overseer"] = resolved
 	writeJSON(w, http.StatusOK, roles)
 }

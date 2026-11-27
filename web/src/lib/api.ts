@@ -1298,6 +1298,7 @@ export const api = {
   saveAgentConfig: (
     key: string,
     patch: {
+      enabled?: boolean;
       llm_profile_id?: number | null; // number = bound; null = unbound (follow task/global); omitted = untouched
       max_turns?: number;
       run_seconds?: number;

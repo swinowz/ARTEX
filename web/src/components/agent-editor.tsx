@@ -268,14 +268,14 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   }
   // config is meaningless for the conversational main agent and the fixed-budget
   // goals decomposer; every other agent (workers, custom assistants) honors it.
-  const showConfig = agentKey !== "mainagent" && agentKey !== "goals";
+  const showConfig = agentKey !== "mainagent" && agentKey !== "goals" && agentKey !== "overseer";
   // web search applies to every conversational/executing agent except the one-shot
   // goals decomposer; it's gated by the global master switch.
-  const showWebSearch = agentKey !== "goals";
+  const showWebSearch = agentKey !== "goals" && agentKey !== "overseer";
   // interactive shell (persistent PTY session tool family) is likewise open to all agents except goals; no global gate.
-  const showInteractiveShell = agentKey !== "goals";
-  // Every agent (including goals/mainagent) runs on some LLM, so the "default model" binding is open to all agents.
-  const showLLM = true;
+  const showInteractiveShell = agentKey !== "goals" && agentKey !== "overseer";
+  // Overseer activation and model selection live in LLM settings.
+  const showLLM = agentKey !== "overseer";
   // triggers (P3) only attach to custom agents.
   const isCustom = !!detail && !detail.agent?.builtin;
 

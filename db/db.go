@@ -271,6 +271,7 @@ var builtinAgents = []builtinAgent{
 		{"ProxyAddr", "Recorded proxy address (drives the if/else dual wording)", "127.0.0.1:8080", "runtime"},
 		{"WorkerName", "Worker self-identifier (optional)", "worker-1", "runtime"},
 	}, false, nil},
+	{"overseer", "Overseer", "overseer", "Reviews active workers and findings, guides stalled work, and opens focused follow-up intents.", nil, false, nil},
 	// Auto: built-in "platform operations" agent. Does not join the pentest
 	// orchestration loop; driven from the chat page, operates the platform with tools.
 	{"auto", "Auto", "assistant", "Platform operations assistant: manages tasks (create/view/pause/hint) and assets with tools, and can create/modify skills, custom tools, and MCP.", nil, false, nil},
@@ -284,11 +285,13 @@ var builtinAgents = []builtinAgent{
 func (d *DB) seedBuiltins() error {
 	for _, a := range builtinAgents {
 		var agentID int64
+		// Overseer is opt-in: creating an LLM profile does not start supervision.
+		enabled := a.key != "overseer"
 		err := d.QueryRow(`
 INSERT INTO agents(key, name, description, role, builtin, enabled, interactive_shell, run_seconds)
-VALUES ($1, $2, NULLIF($3,''), $4, true, true, $5, COALESCE($6, 1200))
+VALUES ($1, $2, NULLIF($3,''), $4, true, $5, $6, COALESCE($7, 1200))
 ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description
-RETURNING id`, a.key, a.name, a.desc, a.role, a.interactiveShell, a.runSeconds).Scan(&agentID)
+RETURNING id`, a.key, a.name, a.desc, a.role, enabled, a.interactiveShell, a.runSeconds).Scan(&agentID)
 		if err != nil {
 			return fmt.Errorf("agent %s: %w", a.key, err)
 		}

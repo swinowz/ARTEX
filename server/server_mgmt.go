@@ -460,6 +460,7 @@ func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
 	// only trigger_* fields) leaves the untouched settings alone instead of resetting
 	// max_turns/run_seconds to 0.
 	var req struct {
+		Enabled          *bool `json:"enabled"`
 		MaxTurns         *int  `json:"max_turns"`
 		RunSeconds       *int  `json:"run_seconds"`
 		WebSearch        *bool `json:"web_search"`
@@ -476,6 +477,12 @@ func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	profileChanged := false
+	if req.Enabled != nil {
+		if err := pg.SetAgentEnabled(a.Key, *req.Enabled); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
 	if req.LLMProfileID != nil { // key present (number or null)
 		var id *int64
 		if err := json.Unmarshal(req.LLMProfileID, &id); err != nil {

@@ -2761,5 +2761,13 @@
   "Scale": "Ölçekle",
   "Add workers to this running task without recreating it. Lowering does nothing.": "Çalışan görevi yeniden oluşturmadan çalışan ekleyin. Düşürmek bir şey yapmaz.",
   "Applying…": "Uygulanıyor…",
-  "Apply": "Uygula"
+  "Apply": "Uygula",
+  "Overseer": "Gözetmen",
+  "Overseer · worker guidance": "Gözetmen · çalışan yönlendirmesi",
+  "Agent enabled": "Ajan etkin",
+  "Could not load Overseer settings": "Gözetmen ayarları yüklenemedi",
+  "Overseer settings saved": "Gözetmen ayarları kaydedildi",
+  "Supervises active tasks and guides workers. Disabled until you enable it here.": "Etkin görevleri denetler ve çalışanlara yol gösterir. Buradan etkinleştirene kadar kapalıdır.",
+  "Enable Overseer": "Gözetmeni etkinleştir",
+  "Overseer model profile": "Gözetmen model profili"
 }
