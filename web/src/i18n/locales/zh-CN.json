@@ -2724,5 +2724,14 @@
   "Search company…": "搜索企业…",
   "Failed to load companies": "加载企业失败",
   "No company found": "未找到企业",
-  "Manage companies": "管理企业"
+  "Manage companies": "管理企业",
+  "Enter a worker count of 1 or more": "请输入大于等于 1 的 Worker 数量",
+  "Added {added} worker(s); now {workers}": "已新增 {added} 个 Worker；当前共 {workers} 个",
+  "Already running {workers} worker(s)": "当前已在运行 {workers} 个 Worker",
+  "Scaling failed — is the task running?": "扩容失败 — 任务是否正在运行？",
+  "Marked met without a linked proof observation": "已标记为达成，但未关联证明观测",
+  "Scale": "扩容",
+  "Add workers to this running task without recreating it. Lowering does nothing.": "在不重建任务的情况下向运行中的任务增加 Worker。调小不会产生效果。",
+  "Applying…": "应用中…",
+  "Apply": "应用"
 }

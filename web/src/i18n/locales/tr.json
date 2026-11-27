@@ -2724,5 +2724,14 @@
   "Search company…": "Şirket ara…",
   "Failed to load companies": "Şirketler yüklenemedi",
   "No company found": "Şirket bulunamadı",
-  "Manage companies": "Şirketleri yönet"
+  "Manage companies": "Şirketleri yönet",
+  "Enter a worker count of 1 or more": "1 veya daha fazla bir çalışan sayısı girin",
+  "Added {added} worker(s); now {workers}": "{added} çalışan eklendi; şimdi {workers}",
+  "Already running {workers} worker(s)": "Zaten {workers} çalışan çalışıyor",
+  "Scaling failed — is the task running?": "Ölçeklendirme başarısız — görev çalışıyor mu?",
+  "Marked met without a linked proof observation": "Bağlı kanıt gözlemi olmadan karşılandı olarak işaretlendi",
+  "Scale": "Ölçekle",
+  "Add workers to this running task without recreating it. Lowering does nothing.": "Çalışan görevi yeniden oluşturmadan çalışan ekleyin. Düşürmek bir şey yapmaz.",
+  "Applying…": "Uygulanıyor…",
+  "Apply": "Uygula"
 }
