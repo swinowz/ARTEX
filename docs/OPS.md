@@ -19,7 +19,17 @@ From source (no embedded UI):
 ```bash
 go run ./cmd/artex                       # backend only, 127.0.0.1:8787
 cd web && npm run dev                    # UI on :5173, /api proxied to the backend
-# or: ./dev.sh                           # both, plus the traffic proxy on :8788
+# or: ./dev.sh                           # backend hot reload + traffic proxy + UI HMR
+```
+
+`dev.sh` runs `scripts/dev-watch.sh` (rebuilds and restarts the Go backend whenever
+`.go`, `go.mod`, or `go.sum` changes) alongside `next dev`, and wires the frontend
+`/api` proxy (`AUTOPENTEST_API`) to the same backend address. Override ports when
+`8787` is occupied (e.g. an SSH tunnel to a lab instance):
+
+```bash
+export ARTEX_PG_DSN='postgres://artex:<password>@127.0.0.1:5432/artex?sslmode=disable' # or from docker-compose.yml
+ARTEX_DEV_ADDR=127.0.0.1:8790 ARTEX_DEV_PROXY=127.0.0.1:8791 ARTEX_WEB_PORT=5174 ./dev.sh
 ```
 
 The process prints one `[config] snapshot {...}` line at startup. It is the authoritative
