@@ -34,6 +34,7 @@ type FormState = {
   env: string;
   insecure: boolean;
   timeoutSeconds: string;
+  taskCredentials: boolean;
 };
 const emptyForm: FormState = {
   name: "",
@@ -44,6 +45,7 @@ const emptyForm: FormState = {
   env: "",
   insecure: false,
   timeoutSeconds: "",
+  taskCredentials: false,
 };
 
 export default function MCPPage() {
@@ -121,6 +123,7 @@ export default function MCPPage() {
       env: envToText(s.env),
       insecure: s.insecure ?? false,
       timeoutSeconds: s.timeout_seconds ? String(s.timeout_seconds) : "",
+      taskCredentials: s.task_credentials ?? false,
     });
     setTab("config");
     setOpen(true);
@@ -172,6 +175,7 @@ export default function MCPPage() {
               args: form.args.trim() ? form.args.trim().split(/\s+/) : [],
               env: parseEnv(form.env),
               insecure: false,
+              task_credentials: form.taskCredentials,
             };
       await api.saveMcpServer({
         ...(editing ? { id: editing.id } : {}),
@@ -299,6 +303,13 @@ export default function MCPPage() {
                 onChange={(e) => setF({ args: e.target.value })}
               />
             </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={form.taskCredentials}
+                onCheckedChange={(v) => setF({ taskCredentials: v === true })}
+              />
+              {t("Pass this task's test accounts at spawn (tools see only a credential ref)")}
+            </label>
           </>
         ) : (
           <div className="grid gap-2">

@@ -1,0 +1,20 @@
+SMB                      10.20.30.10    445    DC01             [*] Windows Server 2022 Build 20348 x64 (name:DC01) (domain:LAB.LOCAL) (signing:False) (SMBv1:None)
+SMB                      10.20.30.10    445    DC01             [+] LAB.LOCAL\alice:******** (Pwn3d!)
+SMB                      10.20.30.10    445    DC01             [*] Enumerated shares
+SMB                      10.20.30.10    445    DC01             Share           Permissions     Type       Remark
+SMB                      10.20.30.10    445    DC01             -----           -----------     ----       ------
+SMB                      10.20.30.10    445    DC01             ADMIN$          READ,WRITE      Disk       Remote Admin
+SMB                      10.20.30.10    445    DC01             SYSVOL          READ            Disk       Logon server share
+SMB                      10.20.30.10    445    DC01             [+] Dumping password info for domain: LAB.LOCAL
+SMB                      10.20.30.10    445    DC01             Minimum password length: 7
+SMB                      10.20.30.10    445    DC01             Password history length: 24
+SMB                      10.20.30.10    445    DC01             Maximum password age: 42
+SMB                      10.20.30.10    445    DC01             Account Lockout Threshold: 5
+SMB                      10.20.30.10    445    DC01             Locked Account Duration: 30
+SMB                      10.20.30.10    445    DC01             Password Complexity Flags: 000001
+SMB                      10.20.30.10    445    DC01             [*] Enumerating with SAMRPC protocol
+SMB                      10.20.30.10    445    DC01             [+] Enumerated 12 local users: LAB
+SMB                      10.20.30.10    445    DC01             -Username-                    -Last PW Set-       -BadPW-  -Description-
+SMB                      10.20.30.10    445    DC01             alice                         2026-01-02 10:00:00 2        Built-in account
+SMB                      10.20.30.11    445    WS01             [*] Windows 10.0 Build 19045 x64 (name:WS01) (domain:LAB.LOCAL) (signing:True) (SMBv1:False)
+SMB                      10.20.30.11    445    WS01             [+] LAB.LOCAL\alice:********

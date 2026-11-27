@@ -27,7 +27,7 @@ func TestConfiguredSandboxMCPStdioRequiresRunIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := connectMCPForRun(t.Context(), &db.MCPServer{Name: "fixture", Transport: "stdio", Command: "unavailable-on-host"}, ExecPrivilege{}, svc)
+	client, err := connectMCPForRun(t.Context(), &db.MCPServer{Name: "fixture", Transport: "stdio", Command: "unavailable-on-host"}, ExecPrivilege{}, svc, nil)
 	if err == nil || client != nil || !strings.Contains(err.Error(), "sandbox run identity is unavailable") {
 		t.Fatalf("MCP stdio fell back to host: client=%v err=%v", client, err)
 	}
@@ -64,7 +64,7 @@ for line in sys.stdin:
 	}
 	ctx, cancel := context.WithTimeout(agent.WithRunInfo(context.Background(), agent.RunInfo{TaskID: 42, TaskSandbox: true}), 5*time.Second)
 	defer cancel()
-	client, err := connectMCPForRun(ctx, &db.MCPServer{Name: "fixture", Transport: "stdio", Command: "unavailable-on-host", Env: json.RawMessage(`{"MCP_SANDBOX_TOKEN":"configured"}`)}, ExecPrivilege{}, svc)
+	client, err := connectMCPForRun(ctx, &db.MCPServer{Name: "fixture", Transport: "stdio", Command: "unavailable-on-host", Env: json.RawMessage(`{"MCP_SANDBOX_TOKEN":"configured"}`)}, ExecPrivilege{}, svc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ for line in sys.stdin:
 	}
 	const key = "0123456789abcdef0123456789abcdef"
 	sessionCtx := agent.WithRunInfo(ctx, agent.RunInfo{SessionSandbox: true, SessionSandboxKey: key, SessionSandboxRoot: sessionRoot})
-	sessionClient, err := connectMCPForRun(sessionCtx, &db.MCPServer{Name: "fixture", Transport: "stdio", Command: "unavailable-on-host"}, ExecPrivilege{}, svc)
+	sessionClient, err := connectMCPForRun(sessionCtx, &db.MCPServer{Name: "fixture", Transport: "stdio", Command: "unavailable-on-host"}, ExecPrivilege{}, svc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ for line in sys.stdin:
 	ctx, cancel := context.WithTimeout(agent.WithRunInfo(context.Background(), agent.RunInfo{TaskID: 990034, TaskSandbox: true}), 30*time.Second)
 	defer cancel()
 	args, _ := json.Marshal([]string{"-u", mcpScript})
-	client, err := connectMCPForRun(ctx, &db.MCPServer{Name: "proof", Transport: "stdio", Command: "python3", Args: args}, ExecPrivilege{}, svc)
+	client, err := connectMCPForRun(ctx, &db.MCPServer{Name: "proof", Transport: "stdio", Command: "python3", Args: args}, ExecPrivilege{}, svc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ for line in sys.stdin:
 	}
 	const sessionKey = "0123456789abcdef0123456789abcdef"
 	sessionCtx := agent.WithRunInfo(ctx, agent.RunInfo{SessionSandbox: true, SessionSandboxKey: sessionKey, SessionSandboxRoot: sessionRoot})
-	sessionMCP, err := connectMCPForRun(sessionCtx, &db.MCPServer{Name: "proof", Transport: "stdio", Command: "python3", Args: args}, ExecPrivilege{}, svc)
+	sessionMCP, err := connectMCPForRun(sessionCtx, &db.MCPServer{Name: "proof", Transport: "stdio", Command: "python3", Args: args}, ExecPrivilege{}, svc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

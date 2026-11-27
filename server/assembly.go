@@ -95,7 +95,7 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 				if !directVisible && !skillGated {
 					continue // neither directly visible nor referenced by a visible skill
 				}
-				cl, err := connectMCPForRun(ctx, m, priv, sb)
+				cl, err := connectMCPForRun(ctx, m, priv, sb, pg.TaskCredentials)
 				if err != nil {
 					log.Printf("[mcp] %s connect failed: %v", m.Name, err)
 					_ = pg.UpdateMCPHealth(m.ID, false, "connect: "+err.Error())

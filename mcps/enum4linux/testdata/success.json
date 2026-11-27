@@ -1,0 +1,75 @@
+{
+    "target": {
+        "host": "10.20.30.10"
+    },
+    "credentials": {
+        "auth_method": "password",
+        "user": "alice",
+        "password": "S3cr3t!",
+        "domain": "LAB.LOCAL",
+        "ticket_file": "",
+        "nthash": "",
+        "random_user": "abcdefgh"
+    },
+    "domain": {
+        "domain": "LAB",
+        "NetBIOS computer name": "DC01",
+        "NetBIOS domain name": "LAB"
+    },
+    "smb_domain_info": {
+        "DNS domain name": "LAB.LOCAL",
+        "NetBIOS domain name": "LAB"
+    },
+    "os_info": {
+        "OS": "Windows Server 2022"
+    },
+    "sessions": {
+        "null": "established"
+    },
+    "shares": {
+        "ADMIN$": {
+            "type": "Disk",
+            "remark": "Remote Admin",
+            "access": {
+                "read": true,
+                "write": true
+            }
+        },
+        "SYSVOL": {
+            "type": "Disk",
+            "remark": "Logon server share",
+            "access": {
+                "read": true,
+                "write": false
+            }
+        }
+    },
+    "users": {
+        "500": {
+            "username": "Administrator"
+        },
+        "1104": {
+            "username": "alice"
+        }
+    },
+    "groups": {
+        "512": {
+            "groupname": "Domain Admins"
+        }
+    },
+    "machines": {
+        "1000": {
+            "machine": "DC01$"
+        }
+    },
+    "policy": {
+        "Domain password information": {
+            "Password history length": "24",
+            "Minimum password length": "7",
+            "Account Lockout Threshold": "5",
+            "Locked Account Duration": "30",
+            "Password Complexity Flags": "000001"
+        }
+    },
+    "errors": {}
+}

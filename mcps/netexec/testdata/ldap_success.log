@@ -1,0 +1,12 @@
+LDAP                     10.20.30.10    389    DC01             [*] Windows Server 2022 Build 20348 (name:DC01) (domain:LAB.LOCAL) (signing:True)
+LDAP                     10.20.30.10    389    DC01             [+] LAB.LOCAL\alice:********
+LDAP                     10.20.30.10    389    DC01             [*] Total records returned: 2
+LDAP                     10.20.30.10    389    DC01             DC01$
+LDAP                     10.20.30.10    389    DC01             WS01$
+LDAP                     10.20.30.10    389    DC01             -Group-                                  -Members- -Description-
+LDAP                     10.20.30.10    389    DC01             Domain Admins                            3         Designated administrators of the domain
+LDAP                     10.20.30.10    389    DC01             Domain Users                             42        All domain users
+LDAP                     10.20.30.10    389    DC01             [+] Dumping password info for domain: LAB.LOCAL
+LDAP                     10.20.30.10    389    DC01             Minimum password length: 7
+LDAP                     10.20.30.10    389    DC01             Account Lockout Threshold: 10
+LDAP                     10.20.30.10    389    DC01             [LAB] DC01.LAB.LOCAL = 10.20.30.10
