@@ -456,6 +456,8 @@ export interface TaskGoal {
   state: string; // GoalState
   origin?: string;
   ts: string;
+  has_proof?: boolean;
+  unverified_met?: boolean;
 }
 
 // Operation constraints for the constraint management card (allow=permit / deny=forbid).

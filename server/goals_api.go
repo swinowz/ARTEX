@@ -26,7 +26,9 @@ func (s *Server) listGoals(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"goals": goalDTOs(goals)})
+	dtos := goalDTOs(goals)
+	attachGoalProofFlags(t.Store, goals, dtos)
+	writeJSON(w, 200, map[string]any{"goals": dtos})
 }
 
 // addGoal manually adds one goal: persist it (under the task root's spawns edge) → record
@@ -169,4 +171,28 @@ func (s *Server) deleteGoal(w http.ResponseWriter, r *http.Request) {
 	}
 	t.NotifyGoalDeleted(text) // record a "human deleted the goal: …" trigger and wake the planner (task not revived)
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func attachGoalProofFlags(store *db.ExplorationStore, nodes []*db.Node, dtos []GoalDTO) {
+	if store == nil || len(nodes) == 0 {
+		return
+	}
+	ids := make([]int64, len(nodes))
+	for i, n := range nodes {
+		ids[i] = n.ID
+	}
+	edges, err := store.EdgesTouching(ids)
+	if err != nil {
+		return
+	}
+	proven := make(map[int64]bool, len(nodes))
+	for _, e := range edges {
+		if e.Rel == db.RelProves {
+			proven[e.To] = true
+		}
+	}
+	for i, n := range nodes {
+		dtos[i].HasProof = proven[n.ID]
+		dtos[i].UnverifiedMet = dtos[i].State == "met" && !dtos[i].HasProof
+	}
 }
