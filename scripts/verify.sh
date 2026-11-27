@@ -124,7 +124,7 @@ if want_go; then
   if [ "$FULL" -eq 1 ]; then
     RACE_PKGS=(
       ./agent ./cmd/artex ./config ./db ./evidence ./guard
-      ./intercept ./llmpool ./llmrec ./mcphttp ./notify ./server
+      ./intercept ./llmpool ./llmrec ./mcphttp ./mcps/nmap ./notify ./scope ./server
       ./sidequestion ./traffic ./traffic/rewrite
     )
     run_step "go test -race -p 1" go test -race -p 1 "${RACE_PKGS[@]}"
