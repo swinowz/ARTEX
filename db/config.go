@@ -911,14 +911,17 @@ type MCPServer struct {
 	Enabled        bool            `json:"enabled"`
 	Insecure       bool            `json:"insecure"`        // http: skip TLS cert verification (self-signed servers, issue #108)
 	TimeoutSeconds int             `json:"timeout_seconds"` // http: per-request timeout in seconds; 0 = default 120
-	LastConnectAt  *time.Time      `json:"last_connect_at,omitempty"`
-	LastConnectOK  *bool           `json:"last_connect_ok,omitempty"`
-	LastConnectErr *string         `json:"last_connect_err,omitempty"`
-	Tools          []string        `json:"tools,omitempty"` // cached tool names (mcp_tools_cache)
+	// stdio: pass this task's test accounts at spawn (issue #17). The secrets stay
+	// in the child's environment; tool results only carry a ref.
+	TaskCredentials bool       `json:"task_credentials"`
+	LastConnectAt   *time.Time `json:"last_connect_at,omitempty"`
+	LastConnectOK   *bool      `json:"last_connect_ok,omitempty"`
+	LastConnectErr  *string    `json:"last_connect_err,omitempty"`
+	Tools           []string   `json:"tools,omitempty"` // cached tool names (mcp_tools_cache)
 }
 
 func (d *DB) ListMCP() ([]*MCPServer, error) {
-	rows, err := d.Query(`SELECT id,name,transport,COALESCE(command,''),args,env,COALESCE(url,''),enabled,insecure,COALESCE(timeout_seconds,120),last_connect_at,last_connect_ok,last_connect_err FROM mcp_servers ORDER BY id`)
+	rows, err := d.Query(`SELECT id,name,transport,COALESCE(command,''),args,env,COALESCE(url,''),enabled,insecure,COALESCE(timeout_seconds,120),task_credentials,last_connect_at,last_connect_ok,last_connect_err FROM mcp_servers ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -926,7 +929,7 @@ func (d *DB) ListMCP() ([]*MCPServer, error) {
 	for rows.Next() {
 		var m MCPServer
 		var args, env []byte
-		if err := rows.Scan(&m.ID, &m.Name, &m.Transport, &m.Command, &args, &env, &m.URL, &m.Enabled, &m.Insecure, &m.TimeoutSeconds, &m.LastConnectAt, &m.LastConnectOK, &m.LastConnectErr); err != nil {
+		if err := rows.Scan(&m.ID, &m.Name, &m.Transport, &m.Command, &args, &env, &m.URL, &m.Enabled, &m.Insecure, &m.TimeoutSeconds, &m.TaskCredentials, &m.LastConnectAt, &m.LastConnectOK, &m.LastConnectErr); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -1040,12 +1043,12 @@ func (d *DB) SaveMCP(m *MCPServer) (int64, error) {
 	}
 	if m.ID == 0 {
 		var id int64
-		err := d.QueryRow(`INSERT INTO mcp_servers(name,transport,command,args,env,url,enabled,insecure,timeout_seconds) VALUES ($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),$7,$8,$9) RETURNING id`,
-			m.Name, m.Transport, m.Command, args, env, m.URL, m.Enabled, m.Insecure, timeout).Scan(&id)
+		err := d.QueryRow(`INSERT INTO mcp_servers(name,transport,command,args,env,url,enabled,insecure,timeout_seconds,task_credentials) VALUES ($1,$2,NULLIF($3,''),$4,$5,NULLIF($6,''),$7,$8,$9,$10) RETURNING id`,
+			m.Name, m.Transport, m.Command, args, env, m.URL, m.Enabled, m.Insecure, timeout, m.TaskCredentials).Scan(&id)
 		return id, err
 	}
-	_, err = d.Exec(`UPDATE mcp_servers SET name=$1,transport=$2,command=NULLIF($3,''),args=$4,env=$5,url=NULLIF($6,''),enabled=$7,insecure=$8,timeout_seconds=$9 WHERE id=$10`,
-		m.Name, m.Transport, m.Command, args, env, m.URL, m.Enabled, m.Insecure, timeout, m.ID)
+	_, err = d.Exec(`UPDATE mcp_servers SET name=$1,transport=$2,command=NULLIF($3,''),args=$4,env=$5,url=NULLIF($6,''),enabled=$7,insecure=$8,timeout_seconds=$9,task_credentials=$10 WHERE id=$11`,
+		m.Name, m.Transport, m.Command, args, env, m.URL, m.Enabled, m.Insecure, timeout, m.TaskCredentials, m.ID)
 	return m.ID, err
 }
 

@@ -1,0 +1,2 @@
+SMB                      10.20.30.10    445    DC01             [*] Windows Server 2022 Build 20348 x64 (name:DC01) (domain:LAB.LOCAL) (signing:True) (SMBv1:False)
+SMB                      10.20.30.10    445    DC01             [-] LAB.LOCAL\alice:******** STATUS_ACCOUNT_LOCKED_OUT

@@ -1,0 +1,39 @@
+{
+    "target": {
+        "host": "10.20.30.11"
+    },
+    "credentials": {
+        "auth_method": "null",
+        "user": "",
+        "password": "",
+        "domain": "",
+        "ticket_file": "",
+        "nthash": "",
+        "random_user": "abcdefgh"
+    },
+    "domain": null,
+    "os_info": {
+        "OS": "Windows 10"
+    },
+    "shares": null,
+    "users": null,
+    "groups": null,
+    "policy": null,
+    "errors": {
+        "sessions": {
+            "SMB/NetBIOS": [
+                "Skipping 'srvinfo' run, not possible with provided credentials"
+            ]
+        },
+        "shares": {
+            "Shares via RPC": [
+                "STATUS_ACCESS_DENIED"
+            ]
+        },
+        "policy": {
+            "Password policy via SAMR": [
+                "Unsupported operation for this target"
+            ]
+        }
+    }
+}

@@ -1,0 +1,4 @@
+SMB                      10.20.30.10    445    DC01             [*] Windows Server 2022 Build 20348 x64 (name:DC01) (domain:LAB.LOCAL) (signing:False) (SMBv1:None)
+SMB                      10.20.30.10    445    DC01             [-] LAB.LOCAL\alice:******** STATUS_LOGON_FAILURE
+SMB                      10.20.30.10    445    DC01             [!] Max user failures reached for username alice, stopping further attempts for this user
+SMB                      10.20.30.10    445    DC01             [-] Error enumerating shares: STATUS_ACCESS_DENIED

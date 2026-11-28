@@ -1328,6 +1328,7 @@ export interface MCPServer {
   enabled: boolean;
   insecure?: boolean; // http: skip TLS cert verification (self-signed servers)
   timeout_seconds?: number; // http/sse: per-request timeout in seconds (default 120)
+  task_credentials?: boolean; // stdio: pass this task's test accounts at spawn (ref only in results)
   last_connect_at?: string | null; // last connect attempt (ISO time)
   last_connect_ok?: boolean | null; // outcome of the last connect attempt
   last_connect_err?: string | null; // failure reason when last_connect_ok is false

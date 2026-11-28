@@ -2146,6 +2146,7 @@
   "Skill library · agentskills.io spec · visibility granted per agent": "Beceri kütüphanesi · agentskills.io belirtimi · görünürlük ajan bazında verilir",
   "Skill library overview": "Beceri kütüphanesine genel bakış",
   "Skills agents invoke by name that do not exist in the library. Sorted by invocation count.": "Ajanların adıyla çağırdığı ancak kütüphanede bulunmayan beceriler. Çağrı sayısına göre sıralıdır.",
+  "Pass this task's test accounts at spawn (tools see only a credential ref)": "Bu görevin test hesaplarını başlatırken aktar (araçlar yalnızca bir kimlik referansı görür)",
   "Skip TLS certificate verification (self-signed certs)": "TLS sertifika doğrulamasını atla (kendinden imzalı sertifikalar)",
   "Skipped": "Atlandı",
   "Skipped here": "Burada atlananlar",

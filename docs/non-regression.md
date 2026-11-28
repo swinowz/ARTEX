@@ -34,6 +34,11 @@ ARTEX_PG_DSN='postgres://...' ./scripts/verify.sh --full
    `cmd/artex-scope` CLI (`keygen`/`sign`/`verify`).
 5. **Bounded `mcp-nmap` (#15)**: `go test ./mcps/nmap -race -count=1` and
    `TestMCPNmapEndToEnd` in `server/mcp_nmap_integration_test.go`.
-6. **Live worker scaling & `workers` setting (#6, #32)**:
+6. **AD inventory (#17)**: `go test ./mcps/adcore ./mcps/netexec ./mcps/enum4linux -race -count=1`
+   and `go test ./server -run TestWithTaskCredentials -race`. Fixtures cover
+   SMB and LDAP success, logon failure, account lockout, access denied and an
+   unsupported check, and assert that no credential value appears in a tool
+   result, in an artifact or in the child environment.
+7. **Live worker scaling & `workers` setting (#6, #32)**:
    `TestScaleWorkers*` and `TestWorkersSettingAndScaleTask` in
    `server/engine_scale_test.go`.

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Autumn-27/artex/mcps/mcpserver"
 	"github.com/Autumn-27/artex/scope"
 )
 
@@ -356,13 +358,27 @@ func ToolSchema() map[string]any {
 // silent no-op.
 func decodeRequest(raw json.RawMessage) (DiscoverRequest, error) {
 	var req DiscoverRequest
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
+	if err := mcpserver.DecodeStrict(raw, &req); err != nil {
 		return req, err
 	}
 	if strings.TrimSpace(req.Target) == "" {
 		return req, errors.New("target is required")
 	}
 	return req, nil
+}
+
+// Serve runs the stdio MCP loop with the single bounded discover tool.
+func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
+	return mcpserver.Serve(ctx, in, out, "nmap", mcpserver.Tool{
+		Name:        "discover",
+		Description: ToolDescription,
+		Schema:      ToolSchema(),
+		Call: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			req, err := decodeRequest(raw)
+			if err != nil {
+				return nil, fmt.Errorf("invalid discover input: %w", err)
+			}
+			return s.Discover(ctx, req)
+		},
+	})
 }

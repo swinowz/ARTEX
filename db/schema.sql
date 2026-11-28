@@ -888,6 +888,9 @@ ALTER TABLE mcp_servers ADD CONSTRAINT mcp_servers_transport_check
     CHECK (transport IN ('stdio','http','sse'));
 -- Backfill column for old databases (schema.sql runs Exec at every startup).
 ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS insecure BOOLEAN NOT NULL DEFAULT false;
+-- stdio servers that need the task's test accounts (AD inventory, #17): the core
+-- passes them at spawn in one environment value; the model only ever sees a ref.
+ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS task_credentials BOOLEAN NOT NULL DEFAULT false;
 -- Per-server request timeout for remote MCP transports, in seconds (default 120). Analysis
 -- servers whose tools legitimately run minutes (e.g. binary reverse engineering) need room
 -- beyond the default without forcing every other server to wait as long.

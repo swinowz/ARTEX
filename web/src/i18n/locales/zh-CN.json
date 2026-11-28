@@ -2146,6 +2146,7 @@
   "Skill library · agentskills.io spec · visibility granted per agent": "技能库 · agentskills.io 规范 · 按 Agent 授权可见",
   "Skill library overview": "技能库总览",
   "Skills agents invoke by name that do not exist in the library. Sorted by invocation count.": "Agent 点名调用、但技能库里不存在的 skill。按被点名次数排序。",
+  "Pass this task's test accounts at spawn (tools see only a credential ref)": "启动时传入本任务的测试账号（工具仅能看到凭据引用）",
   "Skip TLS certificate verification (self-signed certs)": "跳过 TLS 证书校验（自签证书）",
   "Skipped": "已跳过",
   "Skipped here": "不走这层",

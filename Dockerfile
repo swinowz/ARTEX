@@ -47,7 +47,11 @@ RUN ARTEX_SKIP_FRONTEND=1 \
 # Capability MCP servers shipped beside the main binary. Their stdio transport is
 # a separate process, so they are built as their own static binaries.
 RUN CGO_ENABLED=0 GOOS="${TARGETOS:-linux}" GOARCH="${TARGETARCH:-amd64}" \
-    go build -trimpath -o /out/mcp-nmap ./cmd/mcp-nmap
+    go build -trimpath -o /out/mcp-nmap ./cmd/mcp-nmap \
+ && CGO_ENABLED=0 GOOS="${TARGETOS:-linux}" GOARCH="${TARGETARCH:-amd64}" \
+    go build -trimpath -o /out/mcp-netexec ./cmd/mcp-netexec \
+ && CGO_ENABLED=0 GOOS="${TARGETOS:-linux}" GOARCH="${TARGETARCH:-amd64}" \
+    go build -trimpath -o /out/mcp-enum4linux ./cmd/mcp-enum4linux
 
 # ------------------------------------------------------- third-party tools ---
 # Web-recon toolbox (drost-community take 1, #100): pinned release binaries, staged
@@ -176,7 +180,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       arp-scan arping fping iproute2 netdiscover net-tools nfs-common \
       python3-impacket python3-paramiko python3-scapy rpcbind sqlite3 xxd \
       hashcat hydra john ncrack openssh-client ssh-audit sshpass docker.io \
+      samba-common-bin smbclient \
     && rm -rf /var/lib/apt/lists/*
+# AD inventory toolbox (#17), in its own venv so NetExec's dependency graph never
+# fights the pinned agent packages below. Both are invoked as separate processes,
+# so no GPL/BSD code is linked into ARTEX: the AGPL-3.0 licence position is the
+# same as for nmap (ADR-0003). Commits are pinned; upgrade deliberately.
+ARG NETEXEC_COMMIT=3999b0ab405b7c9e24128e2cd8eb919a35133867
+ARG ENUM4LINUX_NG_COMMIT=288826fd9ee89b61d846e59f17b77bae4fb671ee
+RUN python3 -m venv /opt/ad-tools \
+ && /opt/ad-tools/bin/pip install --no-cache-dir --upgrade pip \
+ && /opt/ad-tools/bin/pip install --no-cache-dir \
+      "netexec @ git+https://github.com/Pennyw0rth/NetExec@${NETEXEC_COMMIT}" \
+      "enum4linux-ng @ git+https://github.com/cddmp/enum4linux-ng@${ENUM4LINUX_NG_COMMIT}" \
+ && /opt/ad-tools/bin/nxc --version \
+ && /opt/ad-tools/bin/enum4linux-ng --help >/dev/null
+ENV PATH=/opt/ad-tools/bin:$PATH
 # Python packages needed by agent-generated scripts
 RUN pip install --no-cache-dir --break-system-packages \
       requests==2.32.3 \
@@ -291,6 +310,8 @@ WORKDIR /app
 # Binary compiled from source in the build stage above.
 COPY --from=build /out/artex /app/artex
 COPY --from=build /out/mcp-nmap /usr/local/bin/mcp-nmap
+COPY --from=build /out/mcp-netexec /usr/local/bin/mcp-netexec
+COPY --from=build /out/mcp-enum4linux /usr/local/bin/mcp-enum4linux
 # Daemon startup script: relaunches the process after a crash and forwards SIGTERM
 # to artex — docker stop only signals PID 1; without forwarding, artex never receives it,
 # cannot shut down gracefully, and is hard-killed by SIGKILL after 10 seconds.
