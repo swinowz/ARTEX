@@ -242,6 +242,10 @@ func (r *taskLLMRuntime) currentFor(ctx context.Context) (taskLLMSelection, erro
 		if !ok {
 			return sel, fmt.Errorf("LLM profile #%d is missing or invalid", sel.profileID)
 		}
+		profile, err := r.s.m.pg.ProfileByID(sel.profileID)
+		if err != nil || profile == nil || (r.agentKey != "overseer" && profile.Role == "overseer") || (r.agentKey == "overseer" && profile.Role == "worker") {
+			return sel, fmt.Errorf("LLM profile #%d has a role that is not eligible for %s", sel.profileID, r.agentKey)
+		}
 		sel.provider, sel.retry = prov, cfg.Retry
 		sel.healthProfileID = sel.profileID // chain selections never go through the Pool
 		return sel, nil
@@ -719,6 +723,17 @@ func (r *taskLLMRuntime) CompactionWindow() int {
 func (s *Server) agentBindingProvider(agentKey string) (llm.Provider, agent.Config, int64, bool) {
 	id := s.effectiveProfileForAgent(agentKey, nil)
 	if id == nil {
+		return nil, agent.Config{}, 0, false
+	}
+	profile, err := s.m.pg.ProfileByID(*id)
+	if err != nil || profile == nil {
+		return nil, agent.Config{}, 0, false
+	}
+	if agentKey == "overseer" {
+		if profile.Role == "worker" {
+			return nil, agent.Config{}, 0, false
+		}
+	} else if profile.Role == "overseer" {
 		return nil, agent.Config{}, 0, false
 	}
 	prov, cfg, ok := s.providerForProfile(*id)

@@ -504,6 +504,32 @@ func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	if a.Key == "overseer" {
+		wantEnabled := req.Enabled != nil && *req.Enabled
+		if req.Enabled == nil && a.Enabled {
+			wantEnabled = true
+		}
+		boundID := a.LLMProfileID
+		if req.LLMProfileID != nil {
+			var id *int64
+			if err := json.Unmarshal(req.LLMProfileID, &id); err != nil {
+				writeErr(w, 400, "invalid llm_profile_id format")
+				return
+			}
+			boundID = id
+		}
+		if wantEnabled && boundID == nil {
+			writeErr(w, 400, "bind an overseer or both profile before enabling the Overseer")
+			return
+		}
+		if wantEnabled && boundID != nil {
+			profile, err := pg.ProfileByID(*boundID)
+			if err != nil || profile == nil || profile.Role == "worker" {
+				writeErr(w, 400, "bind an overseer or both profile before enabling the Overseer")
+				return
+			}
+		}
+	}
 	if req.OverseerCadenceMode != nil || req.OverseerIntervalSeconds != nil || req.OverseerIntervalRounds != nil {
 		mode, seconds, rounds := a.OverseerCadenceMode, a.OverseerIntervalSeconds, a.OverseerIntervalRounds
 		if req.OverseerCadenceMode != nil {
@@ -542,8 +568,18 @@ func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if id != nil { // bind: validate the target profile
-			if _, ok := s.loadProfileConfig(*id); !ok {
+			profile, err := pg.ProfileByID(*id)
+			_, usable := s.loadProfileConfig(*id)
+			if err != nil || profile == nil || !usable {
 				writeErr(w, 400, "the specified LLM profile does not exist or is invalid")
+				return
+			}
+			if a.Key == "overseer" && profile.Role == "worker" {
+				writeErr(w, 400, "overseer requires a profile with role overseer or both")
+				return
+			}
+			if a.Key != "overseer" && profile.Role == "overseer" {
+				writeErr(w, 400, "overseer-only LLM profiles cannot be bound to worker agents")
 				return
 			}
 		}
@@ -2215,6 +2251,18 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := body.LLMProfile
+	if p.Role == "" && p.ID != 0 {
+		if existing, err := pg.ProfileByID(p.ID); err == nil && existing != nil {
+			p.Role = existing.Role
+		}
+	}
+	if p.Role == "" {
+		p.Role = "worker"
+	}
+	if p.Role != "worker" && p.Role != "overseer" && p.Role != "both" {
+		writeErr(w, 400, "role must be worker, overseer, or both")
+		return
+	}
 	p.APIKey = body.APIKey
 	p.CustomHeaders = body.CustomHeaders
 	p.ClearCustomHeaders = body.ClearCustomHeaders
@@ -2320,7 +2368,11 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := pg.SaveProfile(&p)
 	if err != nil {
-		writeErr(w, 500, err.Error())
+		if errors.Is(err, db.ErrOverseerOnlyProfile) {
+			writeErr(w, 400, err.Error())
+		} else {
+			writeErr(w, 500, err.Error())
+		}
 		return
 	}
 	// Editing a profile rebuilds any task pinned to it on its next round. Reapply
@@ -2430,7 +2482,11 @@ func (s *Server) pgActivateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := pg.SetActiveProfile(body.ID); err != nil {
-		writeErr(w, 500, err.Error())
+		if errors.Is(err, db.ErrOverseerOnlyProfile) {
+			writeErr(w, 400, err.Error())
+		} else {
+			writeErr(w, 500, err.Error())
+		}
 		return
 	}
 	s.invalidateProfileAgents() // active change may affect pinned-task fallbacks

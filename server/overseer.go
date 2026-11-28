@@ -170,6 +170,13 @@ func (s *Server) overseerReview(ctx context.Context, t *Task, snapshot overseerS
 	if err != nil || role == nil || !role.Enabled {
 		return result, fmt.Errorf("overseer unavailable")
 	}
+	if role.LLMProfileID == nil {
+		return result, fmt.Errorf("Overseer has no dedicated profile; bind an overseer or both profile")
+	}
+	profile, err := s.m.pg.ProfileByID(*role.LLMProfileID)
+	if err != nil || profile == nil || profile.Role == "worker" {
+		return result, fmt.Errorf("Overseer profile must have role overseer or both")
+	}
 	prompt, err := s.m.pg.CurrentPrompt(role.ID)
 	if err != nil {
 		return result, err

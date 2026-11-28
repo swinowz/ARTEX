@@ -337,6 +337,7 @@ function ProfileSheet({
   const isNew = !profile;
   const [name, setName] = React.useState("");
   const [format, setFormat] = React.useState<ProfileFormat>("anthropic");
+  const [role, setRole] = React.useState<LLMProfile["role"]>("worker");
   const [model, setModel] = React.useState("");
   const [baseUrl, setBaseUrl] = React.useState("");
   const [proxy, setProxy] = React.useState("");
@@ -370,6 +371,7 @@ function ProfileSheet({
   React.useEffect(() => {
     if (!open) return;
     setName(profile?.name ?? "");
+    setRole(profile?.role ?? "worker");
     setFormat(
       profile?.format === "openai" || profile?.format === "openai-responses" || profile?.format === "ollama" || profile?.format === "bedrock-gateway"
         ? profile.format
@@ -483,6 +485,7 @@ function ProfileSheet({
       const { id } = await api.saveLLMProfile({
         ...(profile ? { id: Number(profile.id) } : {}),
         name: name.trim(),
+        role,
         format,
         model: model.trim(),
         base_url: baseUrl.trim(),
@@ -587,6 +590,19 @@ function ProfileSheet({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="grid gap-2 sm:max-w-sm">
+            <Label>{t("Profile role")}</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as LLMProfile["role"])}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="worker">{t("Worker")}</SelectItem>
+                <SelectItem value="overseer">{t("Overseer")}</SelectItem>
+                <SelectItem value="both">{t("Both")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">{t("Worker is the default for existing profiles; overseer-only profiles cannot run workers or become the global default.")}</p>
           </div>
 
           <div className="grid gap-2">
@@ -1008,7 +1024,7 @@ export default function LLMPage() {
       const agent = (await api.agents()).find((a) => a.key === "overseer");
       if (!agent) return;
       setOverseerEnabled(agent.enabled);
-      setOverseerProfile(agent.llm_profile_id == null ? "__follow__" : String(agent.llm_profile_id));
+      setOverseerProfile(agent.llm_profile_id == null ? "__none__" : String(agent.llm_profile_id));
       setOverseerCadenceMode(agent.overseer_cadence_mode ?? "seconds");
       setOverseerIntervalSeconds(agent.overseer_interval_seconds ?? 90);
       setOverseerIntervalRounds(agent.overseer_interval_rounds ?? 5);
@@ -1028,7 +1044,7 @@ export default function LLMPage() {
     try {
       await api.saveAgentConfig("overseer", {
         enabled: overseerEnabled,
-        llm_profile_id: overseerProfile === "__follow__" ? null : Number(overseerProfile),
+        llm_profile_id: overseerProfile === "__none__" ? null : Number(overseerProfile),
         overseer_cadence_mode: overseerCadenceMode,
         overseer_interval_seconds: overseerIntervalSeconds,
         overseer_interval_rounds: overseerIntervalRounds,
@@ -1126,12 +1142,13 @@ export default function LLMPage() {
                   <Select value={overseerProfile} onValueChange={setOverseerProfile} disabled={!overseerLoaded || savingOverseer}>
                     <SelectTrigger id="overseer-profile"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__follow__">{t("Follow task / globally active profile")}</SelectItem>
-                      {profiles.map((profile) => (
+                      <SelectItem value="__none__">{t("Select an overseer profile")}</SelectItem>
+                      {profiles.filter((profile) => profile.role === "overseer" || profile.role === "both").map((profile) => (
                         <SelectItem key={profile.id} value={profile.id}>{profile.name} ({profile.model})</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-muted-foreground text-xs">{t("The Overseer must use a bound overseer or both profile; it cannot follow the task or global worker profile.")}</p>
                 </div>
                 <div className="grid min-w-40 gap-1.5">
                   <Label htmlFor="overseer-cadence-mode">{t("Review cadence")}</Label>

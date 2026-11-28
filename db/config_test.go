@@ -226,6 +226,47 @@ func TestConfigStores(t *testing.T) {
 	d.DeleteMCP(mid)
 }
 
+func TestLLMProfileRoleDefaultsAndGlobalGuard(t *testing.T) {
+	d, err := Open(testDSN(t))
+	if err != nil {
+		SkipPGUnavailable(t, err)
+	}
+	defer d.Close()
+	id, err := d.SaveProfile(&LLMProfile{Name: fmt.Sprintf("t-role-default-%d", time.Now().UnixNano()), Format: "openai", Model: "m", APIKey: "test-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer deleteTestProfile(t, d, id)
+	p, err := d.ProfileByID(id)
+	if err != nil || p == nil || p.Role != "worker" {
+		t.Fatalf("legacy/default role = %+v, %v", p, err)
+	}
+	if err := d.SetActiveProfile(id); err != nil {
+		t.Fatalf("worker should remain a valid global default: %v", err)
+	}
+	p.Role = "overseer"
+	if _, err := d.SaveProfile(p); err == nil {
+		t.Fatal("active profile could be changed to overseer-only")
+	}
+	otherID, err := d.SaveProfile(&LLMProfile{Name: fmt.Sprintf("t-role-overseer-%d", time.Now().UnixNano()), Role: "overseer", Format: "openai", Model: "m", APIKey: "test-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer deleteTestProfile(t, d, otherID)
+	pool, err := d.PoolProfiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range pool {
+		if candidate.ID == otherID {
+			t.Fatal("overseer-only profile entered worker failover pool")
+		}
+	}
+	if err := d.SetActiveProfile(otherID); !errors.Is(err, ErrOverseerOnlyProfile) {
+		t.Fatalf("SetActiveProfile error=%v", err)
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(s) >= len(sub) && (indexOf(s, sub) >= 0)
 }

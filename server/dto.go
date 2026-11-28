@@ -623,6 +623,7 @@ func agentDTOs(in []*db.Agent) []AgentDTO {
 
 type LLMProfileDTO struct {
 	ID              string  `json:"id"`
+	Role            string  `json:"role"`
 	Name            string  `json:"name"`
 	Format          string  `json:"format"`
 	BaseURL         string  `json:"base_url,omitempty"`
@@ -668,6 +669,7 @@ type LLMProfileDTO struct {
 func llmProfileDTO(p *db.LLMProfile) LLMProfileDTO {
 	return LLMProfileDTO{
 		ID:               i64s(p.ID),
+		Role:             p.Role,
 		Name:             p.Name,
 		Format:           p.Format,
 		BaseURL:          p.BaseURL,
