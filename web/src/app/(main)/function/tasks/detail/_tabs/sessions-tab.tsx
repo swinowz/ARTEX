@@ -320,6 +320,16 @@ function intentStatus(state: string): SessionStatus {
   }
 }
 
+function intentProgressLabel(items: Activity[]): string | undefined {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const state = items[i].kind === "progress" ? items[i].metadata?.state : undefined;
+    if (state === "waiting-model") return t("Waiting on model");
+    if (state === "executing") return t("Executing");
+    if (state === "waiting-approval") return t("Waiting for approval");
+  }
+  return undefined;
+}
+
 // Derive worker sessions from running/open intents — there is no backend
 // sessions endpoint, so intents (≈ worker units) are the closest real source.
 function intentToSession(n: TaskNode): Session {
@@ -344,6 +354,7 @@ function SessionItem({
   displayTitle,
   hasPending,
   unread,
+  progressLabel,
   onClick,
   onCancel,
   controlling,
@@ -354,6 +365,7 @@ function SessionItem({
   displayTitle: string;
   hasPending?: boolean;
   unread?: number;
+  progressLabel?: string;
   onClick: () => void;
   onCancel?: () => void;
   controlling?: boolean;
@@ -417,6 +429,9 @@ function SessionItem({
             <span className="size-1 animate-pulse rounded-full bg-blue-500" />
             {t("Live")}
           </span>
+        )}
+        {progressLabel && s.status === "running" && (
+          <span className="shrink-0 text-[10px] text-muted-foreground">{progressLabel}</span>
         )}
       </button>
       {cancellable && (
@@ -1020,7 +1035,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
             // sidebar can add the latest unfinished usage without loading history.
             if (!cur.loaded && !cur.loading && k !== activeK) {
               const accountingItems =
-                a.kind === "usage" || a.kind === "result" ? mergeBySeq(cur.items, [a]).slice(-4) : cur.items;
+                a.kind === "usage" || a.kind === "result" || a.kind === "progress" ? mergeBySeq(cur.items, [a]).slice(-8) : cur.items;
               return {
                 ...prev,
                 [k]: { ...cur, items: accountingItems, lastTs: a.ts, unread: cur.unread + 1 },
@@ -1715,6 +1730,7 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
                           displayTitle={meta?.title ?? s.title}
                           hasPending={hasPendingForSession(s)}
                           unread={store[keyForSession(s)]?.unread}
+                          progressLabel={s.role === "worker" ? intentProgressLabel(store[keyForSession(s)]?.items ?? []) : undefined}
                           onClick={() => {
                             approvalFocus.close();
                             setActiveId(s.id);
@@ -1820,6 +1836,9 @@ export function SessionsTab({ taskId, taskPaused = false }: { taskId: string; ta
                   <span className="size-1 animate-pulse rounded-full bg-blue-500" />
                   {t("Live")}
                 </span>
+              )}
+              {active.role === "worker" && active.status === "running" && (
+                <Badge variant="secondary">{intentProgressLabel(activeItems) ?? t("Executing")}</Badge>
               )}
               {activeState?.hasMore && (
                 <span className="text-[10px] text-muted-foreground" title={t("Scroll up to load earlier history")}>

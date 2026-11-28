@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -73,7 +74,74 @@ const (
 	modelErrorRetries      = 2               // extra reruns after a model_error finish
 	modelErrorRetryBackoff = 3 * time.Second // backoff before each retry
 	workControlWaitTimeout = 30 * time.Second
+	intentProgressInterval = 2 * time.Minute
 )
+
+// intentProgress writes state changes and a heartbeat to the normal activity
+// stream. Keeping it separate from claim renewal lets the UI show a busy intent
+// even when a model or a tool produces no output for several minutes.
+type intentProgress struct {
+	mu    sync.Mutex
+	state string
+	stop  chan struct{}
+	done  chan struct{}
+	emit  func(db.Activity)
+}
+
+func startIntentProgress(interval time.Duration, emit func(db.Activity)) *intentProgress {
+	p := &intentProgress{stop: make(chan struct{}), done: make(chan struct{}), emit: emit}
+	p.set("waiting-model", "intent started")
+	go func() {
+		defer close(p.done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-p.stop:
+				return
+			case <-ticker.C:
+				p.mu.Lock()
+				p.write("intent in progress")
+				p.mu.Unlock()
+			}
+		}
+	}()
+	return p
+}
+
+// write is called with mu held, so a periodic tick cannot reorder a transition.
+func (p *intentProgress) write(summary string) {
+	metadata, _ := json.Marshal(struct {
+		State string `json:"state"`
+	}{p.state})
+	p.emit(db.Activity{Kind: "progress", Summary: summary, Metadata: metadata})
+}
+
+func (p *intentProgress) set(state, summary string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.state == state {
+		return
+	}
+	p.state = state
+	p.write(summary)
+}
+
+func (p *intentProgress) observe(a db.Activity) {
+	switch a.Kind {
+	case "tool_use":
+		p.set("executing", "command launched")
+	case "tool_result":
+		p.set("waiting-model", "intent waiting on model")
+	case "intercept_request":
+		p.set("waiting-approval", "intent waiting for approval")
+	}
+}
+
+func (p *intentProgress) close() {
+	close(p.stop)
+	<-p.done
+}
 
 var errWorkControlConflict = errors.New("work control conflict")
 
@@ -1331,11 +1399,16 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 	// wrap the guard hooks so steer_work can inject a mid-run course-correction
 	// for THIS intent (drained before the worker's next tool call).
 	iid := intent.ID
+	var progress *intentProgress
 	taskEmit := func(a db.Activity) {
 		nid := iid
 		a.NodeID, a.Worker = &nid, name
 		emit(a)
+		if progress != nil {
+			progress.observe(a)
+		}
 	}
+	progress = startIntentProgress(intentProgressInterval, taskEmit)
 	label := fmt.Sprintf("%s · #%d", name, iid)
 	workCtx = intercept.WithTaskContext(workCtx, t.ID, label, taskEmit)
 	workCtx = intercept.WithTargetScope(workCtx, t.targetScope(intercept.DefaultTargetWaitBound))
@@ -1353,14 +1426,18 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 		budget: meter,
 	}
 	wTaskID, _ := strconv.ParseInt(t.ID, 10, 64)
+	workerEmit := func(a db.Activity) {
+		emit(a)
+		progress.observe(a)
+	}
 	e.BeginLLMCall(t.ID)
 	var reason harness.TerminalReason
 	var wrote agent.WriteCounts
 	var err error
 	if hasChatMessage {
-		reason, wrote, err = worker.ExecuteWithMessage(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, emit, e.m.enrich, t.NotifyFinding, requestID, message)
+		reason, wrote, err = worker.ExecuteWithMessage(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, workerEmit, e.m.enrich, t.NotifyFinding, requestID, message)
 	} else {
-		reason, wrote, err = worker.Execute(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, emit, e.m.enrich, t.NotifyFinding)
+		reason, wrote, err = worker.Execute(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, workerEmit, e.m.enrich, t.NotifyFinding)
 	}
 	e.EndLLMCall(t.ID)
 	e.workerRoundCompleted(t.ID)
@@ -1378,13 +1455,14 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 		}
 		e.BeginLLMCall(t.ID)
 		if hasChatMessage {
-			reason, wrote, err = worker.ExecuteWithMessage(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, emit, e.m.enrich, t.NotifyFinding, requestID, message)
+			reason, wrote, err = worker.ExecuteWithMessage(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, workerEmit, e.m.enrich, t.NotifyFinding, requestID, message)
 		} else {
-			reason, wrote, err = worker.Execute(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, emit, e.m.enrich, t.NotifyFinding)
+			reason, wrote, err = worker.Execute(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, workerEmit, e.m.enrich, t.NotifyFinding)
 		}
 		e.EndLLMCall(t.ID)
 		e.workerRoundCompleted(t.ID)
 	}
+	progress.close()
 	stopHeartbeat() // no longer busy: the state writes below follow within the just-renewed claim
 	if meter != nil {
 		meter.Finish() // feeds the per-worker cost estimate
