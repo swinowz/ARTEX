@@ -31,6 +31,7 @@ func rawString(raw json.RawMessage) string {
 // ---- Task (frontend "Task") ---- created_at as RFC3339, plus a derived status.
 type TaskDTO struct {
 	ID                 string             `json:"id"`
+	ParentRef          string             `json:"parent_ref,omitempty"`
 	ExplorationID      int64              `json:"exploration_id"`
 	Name               string             `json:"name"` // optional task name; empty = unnamed
 	CategoryID         *int64             `json:"category_id,omitempty"`
@@ -121,6 +122,7 @@ func taskDTO(t *Task, status string) TaskDTO {
 	profileIDs := append(make([]int64, 0, len(llmState.ProfileIDs)), llmState.ProfileIDs...)
 	return TaskDTO{
 		ID:                 t.ID,
+		ParentRef:          t.ParentRef,
 		ExplorationID:      t.ExpID,
 		Name:               lifecycle.Name,
 		CategoryID:         lifecycle.CategoryID,

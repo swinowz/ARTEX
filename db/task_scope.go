@@ -349,6 +349,20 @@ WHERE ts.task_id=$1 ORDER BY ts.id`, taskID)
 	return out, rows.Err()
 }
 
+// CloneTaskScope copies the stored scope rows of one task to another task.
+// It preserves row provenance and metadata while leaving the global asset graph untouched.
+func (s *AssetStore) CloneTaskScope(sourceTaskID, targetTaskID int64) error {
+	if sourceTaskID <= 0 || targetTaskID <= 0 || sourceTaskID == targetTaskID {
+		return fmt.Errorf("invalid task scope clone ids")
+	}
+	_, err := s.db.Exec(`
+INSERT INTO task_scope(task_id, kind, company_id, domain, net, value, source, reason, expanded)
+SELECT $2, kind, company_id, domain, net, value, source, reason, expanded
+FROM task_scope WHERE task_id=$1
+ON CONFLICT DO NOTHING`, sourceTaskID, targetTaskID)
+	return err
+}
+
 // CoverageAsset is one in-scope asset (used for the untested backlog sample).
 type CoverageAsset struct {
 	ID    int64  `json:"id"`

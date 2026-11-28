@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -47,9 +48,26 @@ func (s *Server) startTaskEngine(t *Task) {
 	}
 	s.engine.emitActivity(t, db.Activity{Worker: "planner", Kind: "round",
 		Summary: "round 0 goal decomposition"})
-	goals, err := s.createGoals(ctx, t, func(r db.Activity) {
-		s.engine.emitActivity(t, r)
-	})
+	storedGoals, err := t.Store.ListByKind(db.KindGoal, 10000)
+	goals := make([]goalSpec, 0, len(storedGoals))
+	if err == nil && len(storedGoals) > 0 {
+		// Cloned tasks carry their source goals as fresh open nodes. Use them
+		// directly so startup does not decompose the same objective a second time.
+		for _, node := range storedGoals {
+			var payload struct {
+				Text      string `json:"text"`
+				VulnClass string `json:"vulnclass"`
+			}
+			if json.Unmarshal(node.Payload, &payload) == nil && strings.TrimSpace(payload.Text) != "" {
+				goals = append(goals, goalSpec{Text: payload.Text, VulnClass: payload.VulnClass})
+			}
+		}
+	}
+	if len(goals) == 0 {
+		goals, err = s.createGoals(ctx, t, func(r db.Activity) {
+			s.engine.emitActivity(t, r)
+		})
+	}
 	if ctx.Err() != nil || s.engine.IsDeleting(t.ID) {
 		return
 	}
