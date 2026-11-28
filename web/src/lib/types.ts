@@ -700,6 +700,7 @@ export interface LLMTransition {
 
 export interface TaskLLMResolution {
   profile_id?: number;
+  enabled?: boolean;
   name: string;
   format: string;
   model: string;
@@ -711,6 +712,7 @@ export interface TaskLLMResolution {
 export interface TaskLLMResolutions {
   mainagent: TaskLLMResolution;
   planner: TaskLLMResolution;
+  overseer: TaskLLMResolution;
   worker: TaskLLMResolution;
 }
 
@@ -780,8 +782,8 @@ export interface LogLine {
   text: string;
 }
 
-export type SessionRole = "mainagent" | "planner" | "worker" | "system";
-export type SessionStatus = "running" | "paused" | "done" | "blocked" | "exhausted" | "pending" | "stopped" | "deleted";
+export type SessionRole = "mainagent" | "planner" | "overseer" | "worker" | "system";
+export type SessionStatus = "running" | "paused" | "done" | "blocked" | "exhausted" | "pending" | "stopped" | "deleted" | "disabled";
 
 // Daily token aggregate bucket (GET /api/tokens/daily).
 export interface DailyTokenBucket {
@@ -1263,6 +1265,9 @@ export interface Agent {
   builtin: boolean;
   enabled: boolean;
   llm_profile_id?: number | null; // bound LLM profile; null/absent = follow task/session/global
+  overseer_cadence_mode?: "seconds" | "rounds";
+  overseer_interval_seconds?: number;
+  overseer_interval_rounds?: number;
   max_turns?: number; // 0 = unlimited
   run_seconds?: number; // worker per-run wall-clock cap (seconds); 0 = unlimited
   web_search?: boolean; // whether web search is enabled (gated by the global system switch)

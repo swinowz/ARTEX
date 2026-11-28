@@ -449,6 +449,31 @@ func (s *Server) agentByKey(w http.ResponseWriter, r *http.Request) (*db.DB, *db
 	return pg, a, true
 }
 
+// pgGetAgentConfig returns an agent's runtime config in the same flat shape
+// PUT /api/agents/{key}/config accepts, so a client can read-modify-write the
+// endpoint instead of reassembling the config from GET /api/agents/{key}
+// (which nests it under "agent" next to the prompt/visibility payload).
+func (s *Server) pgGetAgentConfig(w http.ResponseWriter, r *http.Request) {
+	_, a, ok := s.agentByKey(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"enabled":                   a.Enabled,
+		"llm_profile_id":            a.LLMProfileID, // null = follow the task/global setting
+		"max_turns":                 a.MaxTurns,
+		"run_seconds":               a.RunSecs,
+		"web_search":                a.WebSearch,
+		"interactive_shell":         a.InteractiveShell,
+		"overseer_cadence_mode":     a.OverseerCadenceMode,
+		"overseer_interval_seconds": a.OverseerIntervalSeconds,
+		"overseer_interval_rounds":  a.OverseerIntervalRounds,
+		"trigger_run_mode":          a.TriggerRunMode,
+		"trigger_merge_mode":        a.TriggerMergeMode,
+		"trigger_max_parallel":      a.TriggerMaxParallel,
+	})
+}
+
 // pgSaveAgentConfig updates an agent's runtime config (currently max_turns) and
 // re-applies the live LLM so the change takes effect immediately.
 func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
@@ -460,10 +485,14 @@ func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
 	// only trigger_* fields) leaves the untouched settings alone instead of resetting
 	// max_turns/run_seconds to 0.
 	var req struct {
-		MaxTurns         *int  `json:"max_turns"`
-		RunSeconds       *int  `json:"run_seconds"`
-		WebSearch        *bool `json:"web_search"`
-		InteractiveShell *bool `json:"interactive_shell"`
+		Enabled                 *bool   `json:"enabled"`
+		OverseerCadenceMode     *string `json:"overseer_cadence_mode"`
+		OverseerIntervalSeconds *int    `json:"overseer_interval_seconds"`
+		OverseerIntervalRounds  *int    `json:"overseer_interval_rounds"`
+		MaxTurns                *int    `json:"max_turns"`
+		RunSeconds              *int    `json:"run_seconds"`
+		WebSearch               *bool   `json:"web_search"`
+		InteractiveShell        *bool   `json:"interactive_shell"`
 		// llm_profile_id is tri-state: field omitted = leave unchanged; explicit null = unbind (follow task/global); number = bind that profile.
 		LLMProfileID json.RawMessage `json:"llm_profile_id"`
 		// P3 post-trigger handling policy (the three are optional as a group; providing any one writes the whole set; none provided = leave unchanged).
@@ -475,7 +504,37 @@ func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	if req.OverseerCadenceMode != nil || req.OverseerIntervalSeconds != nil || req.OverseerIntervalRounds != nil {
+		mode, seconds, rounds := a.OverseerCadenceMode, a.OverseerIntervalSeconds, a.OverseerIntervalRounds
+		if req.OverseerCadenceMode != nil {
+			mode = *req.OverseerCadenceMode
+		}
+		if req.OverseerIntervalSeconds != nil {
+			seconds = *req.OverseerIntervalSeconds
+		}
+		if req.OverseerIntervalRounds != nil {
+			rounds = *req.OverseerIntervalRounds
+		}
+		if mode != "seconds" && mode != "rounds" {
+			writeErr(w, 400, "overseer_cadence_mode must be seconds or rounds")
+			return
+		}
+		if seconds < 1 || rounds < 1 {
+			writeErr(w, 400, "overseer cadence intervals must be positive")
+			return
+		}
+		if err := pg.SetOverseerCadence(a.Key, mode, seconds, rounds); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
 	profileChanged := false
+	if req.Enabled != nil {
+		if err := pg.SetAgentEnabled(a.Key, *req.Enabled); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
 	if req.LLMProfileID != nil { // key present (number or null)
 		var id *int64
 		if err := json.Unmarshal(req.LLMProfileID, &id); err != nil {

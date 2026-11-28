@@ -234,6 +234,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		defer s.cfgMu.Unlock()
 		return s.llmOn
 	})
+	s.engine.SetOverseerRunner(s.overseerLoop)
 	// Wire DB-stored prompt templates into the agents (new design plan §3.3 / §5a). With no
 	// override row, agents keep their built-in defaults — behavior is unchanged.
 	if m.pg != nil {
@@ -986,6 +987,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/agents/{key}", s.pgGetAgent)
 	mux.HandleFunc("PATCH /api/agents/{key}", s.pgUpdateAgent)
 	mux.HandleFunc("DELETE /api/agents/{key}", s.pgDeleteAgent)
+	mux.HandleFunc("GET /api/agents/{key}/config", s.pgGetAgentConfig)
 	mux.HandleFunc("PUT /api/agents/{key}/config", s.pgSaveAgentConfig)
 	mux.HandleFunc("PUT /api/agents/{key}/prompt", s.pgSavePrompt)
 	mux.HandleFunc("POST /api/agents/{key}/prompt/reset", s.pgResetPrompt)
@@ -3246,6 +3248,8 @@ func parseActivitySession(sess string) (db.ActivitySessionFilter, bool) {
 		return db.ActivitySessionFilter{Main: true, MainSeg: &seg}, true
 	case sess == "plan":
 		return db.ActivitySessionFilter{Worker: "planner"}, true
+	case sess == "overseer":
+		return db.ActivitySessionFilter{Worker: "overseer"}, true
 	case strings.HasPrefix(sess, "intent:"):
 		id, err := strconv.ParseInt(strings.TrimPrefix(sess, "intent:"), 10, 64)
 		if err != nil {
