@@ -987,6 +987,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/agents/{key}", s.pgGetAgent)
 	mux.HandleFunc("PATCH /api/agents/{key}", s.pgUpdateAgent)
 	mux.HandleFunc("DELETE /api/agents/{key}", s.pgDeleteAgent)
+	mux.HandleFunc("GET /api/agents/{key}/config", s.pgGetAgentConfig)
 	mux.HandleFunc("PUT /api/agents/{key}/config", s.pgSaveAgentConfig)
 	mux.HandleFunc("PUT /api/agents/{key}/prompt", s.pgSavePrompt)
 	mux.HandleFunc("POST /api/agents/{key}/prompt/reset", s.pgResetPrompt)

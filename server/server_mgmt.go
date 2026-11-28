@@ -449,6 +449,31 @@ func (s *Server) agentByKey(w http.ResponseWriter, r *http.Request) (*db.DB, *db
 	return pg, a, true
 }
 
+// pgGetAgentConfig returns an agent's runtime config in the same flat shape
+// PUT /api/agents/{key}/config accepts, so a client can read-modify-write the
+// endpoint instead of reassembling the config from GET /api/agents/{key}
+// (which nests it under "agent" next to the prompt/visibility payload).
+func (s *Server) pgGetAgentConfig(w http.ResponseWriter, r *http.Request) {
+	_, a, ok := s.agentByKey(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"enabled":                   a.Enabled,
+		"llm_profile_id":            a.LLMProfileID, // null = follow the task/global setting
+		"max_turns":                 a.MaxTurns,
+		"run_seconds":               a.RunSecs,
+		"web_search":                a.WebSearch,
+		"interactive_shell":         a.InteractiveShell,
+		"overseer_cadence_mode":     a.OverseerCadenceMode,
+		"overseer_interval_seconds": a.OverseerIntervalSeconds,
+		"overseer_interval_rounds":  a.OverseerIntervalRounds,
+		"trigger_run_mode":          a.TriggerRunMode,
+		"trigger_merge_mode":        a.TriggerMergeMode,
+		"trigger_max_parallel":      a.TriggerMaxParallel,
+	})
+}
+
 // pgSaveAgentConfig updates an agent's runtime config (currently max_turns) and
 // re-applies the live LLM so the change takes effect immediately.
 func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
