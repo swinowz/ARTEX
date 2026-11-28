@@ -369,6 +369,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE TABLE IF NOT EXISTS llm_profiles (
     id               BIGSERIAL PRIMARY KEY,
+    role             TEXT NOT NULL DEFAULT 'worker' CHECK (role IN ('worker','overseer','both')),
     name             TEXT NOT NULL UNIQUE,
     format           TEXT NOT NULL CHECK (format IN ('openai','anthropic','openai-responses','ollama','bedrock-gateway')),
     base_url         TEXT,
@@ -384,6 +385,7 @@ CREATE TABLE IF NOT EXISTS llm_profiles (
     reasoning_effort TEXT NOT NULL DEFAULT '',
     thinking_type    TEXT NOT NULL DEFAULT '',
     is_default       BOOLEAN NOT NULL DEFAULT false,
+    CONSTRAINT llm_profiles_default_role_ck CHECK (NOT is_default OR role IN ('worker','both')),
     -- Rotation (failover) parameters, see the LLM rotation design doc:
     --   priority     ordering; larger values are picked earlier; the active profile (is_default) always leads the chain, regardless of this value.
     --   pool_exclude true=not a failover target (can still be explicitly bound by an agent/task).

@@ -1186,6 +1186,7 @@ export const api = {
   saveLLMProfile: (p: {
     id?: number; // omit/0 = create; set = update that profile
     name: string;
+    role: "worker" | "overseer" | "both";
     format: string;
     model: string;
     base_url?: string;

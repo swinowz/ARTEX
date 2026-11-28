@@ -81,7 +81,7 @@ func TestOverseerRuntimeCadenceProof(t *testing.T) {
 
 	profileID, err := m.pg.SaveProfile(&db.LLMProfile{
 		Name: fmt.Sprintf("runtime-proof-stub-%d", time.Now().UnixNano()), Format: "anthropic", BaseURL: stub.URL, Model: "claude-runtime-proof",
-		APIKey: "runtime-proof-only", Streaming: true,
+		APIKey: "runtime-proof-only", Streaming: true, Role: "overseer",
 	})
 	if err != nil {
 		t.Fatal(err)

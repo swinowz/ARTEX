@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Autumn-27/artex/db"
@@ -93,5 +95,65 @@ func TestAgentConfigGetSymmetric(t *testing.T) {
 	code, _ = do("GET", "/api/agents/no-such-agent/config", nil)
 	if code != 404 {
 		t.Fatalf("unknown agent key should be 404, got %d", code)
+	}
+}
+
+func TestOverseerProfileRoleBinding(t *testing.T) {
+	m, err := NewManager(t.TempDir(), "")
+	if err != nil {
+		db.SkipPGUnavailable(t, err)
+	}
+	if m.pg == nil {
+		db.SkipNoPG(t)
+	}
+	defer m.Close()
+	td := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	s := New(ctx, m, td, td, td)
+	defer stopTestServer(t, s, cancel)
+	tok, err := signJWT(s.jwtKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(method, path string, body any) (int, map[string]any) {
+		b, _ := json.Marshal(body)
+		req := httptest.NewRequest(method, path, bytes.NewReader(b))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		out := map[string]any{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	workerID, err := m.pg.SaveProfile(&db.LLMProfile{Name: "role-worker-api-test", Format: "openai", Model: "m", APIKey: "throwaway-test-key", Role: "worker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.pg.Exec(`DELETE FROM llm_profiles WHERE id=$1`, workerID)
+	overID, err := m.pg.SaveProfile(&db.LLMProfile{Name: "role-overseer-api-test", Format: "openai", Model: "m", APIKey: "throwaway-test-key", Role: "overseer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.pg.Exec(`DELETE FROM llm_profiles WHERE id=$1`, overID)
+	code, out := call("PUT", "/api/agents/overseer/config", map[string]any{"llm_profile_id": workerID})
+	if code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "role overseer or both") {
+		t.Fatalf("worker binding result %d: %v", code, out)
+	}
+	code, out = call("PUT", "/api/agents/overseer/config", map[string]any{"llm_profile_id": overID})
+	if code != 200 {
+		t.Fatalf("overseer binding result %d: %v", code, out)
+	}
+	code, out = call("PUT", "/api/agents/planner/config", map[string]any{"llm_profile_id": overID})
+	if code != 400 {
+		t.Fatalf("worker-agent binding result %d: %v", code, out)
+	}
+	if err := m.pg.SetAgentLLMProfile("overseer", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.validateTaskProfileIDs([]int64{overID}); err == nil || !strings.Contains(err.Error(), "overseer-only") {
+		t.Fatalf("task worker validation error=%v", err)
+	}
+	if err := s.validateTaskProfileIDs([]int64{workerID}); err != nil {
+		t.Fatalf("worker profile rejected: %v", err)
 	}
 }

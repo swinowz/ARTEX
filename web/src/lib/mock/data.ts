@@ -3074,6 +3074,7 @@ export const llmProfiles: LLMProfile[] = [
   {
     id: "1",
     name: "Claude Opus 4.8",
+    role: "worker",
     format: "anthropic",
     model: "claude-opus-4-8",
     api_key_hint: "…a3f2",
@@ -3092,6 +3093,7 @@ export const llmProfiles: LLMProfile[] = [
   {
     id: "2",
     name: "DeepSeek V4",
+    role: "worker",
     format: "openai",
     base_url: "https://api.deepseek.com",
     model: "deepseek-v4-flash",

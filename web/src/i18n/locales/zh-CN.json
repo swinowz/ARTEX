@@ -2774,5 +2774,10 @@
   "Seconds": "秒",
   "Worker rounds": "工作轮次",
   "Interval (seconds)": "间隔（秒）",
-  "Interval (rounds)": "间隔（轮次）"
+  "Interval (rounds)": "间隔（轮次）",
+  "Profile role": "配置角色",
+  "Both": "两者",
+  "Worker is the default for existing profiles; overseer-only profiles cannot run workers or become the global default.": "现有配置文件默认角色为 Worker；仅限 Overseer 的配置文件不能运行 Worker 或设为全局默认。",
+  "Select an overseer profile": "选择 Overseer 配置文件",
+  "The Overseer must use a bound overseer or both profile; it cannot follow the task or global worker profile.": "Overseer 必须绑定角色为 Overseer 或 Both 的配置文件；不能跟随任务或全局 Worker 配置文件。"
 }

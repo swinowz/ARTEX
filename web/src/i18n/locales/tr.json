@@ -2774,5 +2774,10 @@
   "Seconds": "Saniye",
   "Worker rounds": "İşçi turları",
   "Interval (seconds)": "Aralık (saniye)",
-  "Interval (rounds)": "Aralık (tur)"
+  "Interval (rounds)": "Aralık (tur)",
+  "Profile role": "Profil rolü",
+  "Both": "Her ikisi",
+  "Worker is the default for existing profiles; overseer-only profiles cannot run workers or become the global default.": "Mevcut profiller için varsayılan rol çalışan rolüdür; yalnızca gözetmen profilleri çalışanları yürütemez veya genel varsayılan olamaz.",
+  "Select an overseer profile": "Bir gözetmen profili seçin",
+  "The Overseer must use a bound overseer or both profile; it cannot follow the task or global worker profile.": "Gözetmen, gözetmen veya her ikisi rolündeki bağlı bir profili kullanmalıdır; görev ya da genel çalışan profilini izleyemez."
 }

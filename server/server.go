@@ -1951,6 +1951,13 @@ func (s *Server) validateTaskProfileIDs(ids []int64) error {
 		if _, ok := s.loadProfileConfig(id); !ok {
 			return fmt.Errorf("LLM profile #%d not found or not usable (no API key for the key-requiring formats)", id)
 		}
+		p, err := s.m.pg.ProfileByID(id)
+		if err != nil || p == nil {
+			return fmt.Errorf("LLM profile #%d not found", id)
+		}
+		if p.Role == "overseer" {
+			return fmt.Errorf("LLM profile #%d is overseer-only and cannot be used by workers", id)
+		}
 	}
 	return nil
 }

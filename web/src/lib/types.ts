@@ -1163,6 +1163,7 @@ export interface NotificationDelivery {
 // ---- LLM config ----
 export interface LLMProfile {
   id: string;
+  role: "worker" | "overseer" | "both";
   name: string;
   format: "openai" | "anthropic" | "openai-responses" | "ollama" | "bedrock-gateway";
   base_url?: string;
