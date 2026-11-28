@@ -148,6 +148,10 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	defer func() { err = errors.Join(err, finishSessionSandbox(m.sandbox, sandboxKey)) }()
 	tools, def, cleanup := AugmentTools(ctx, "mainagent", base)
 	defer cleanup()
+	// The main agent is orchestration-only and carries no shell today (upstream
+	// sync); the wrapper stays so a future tool list with Bash cannot bypass the
+	// turn's container. The container also hosts this turn's MCP stdio children,
+	// which read the sandbox identity from the context.
 	tools = sessionSandboxTools(tools, m.sandbox, sandboxKey, mainDir)
 	ctx = intercept.WithReviewWorkingDirectory(ctx, mainDir)
 	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir), def)

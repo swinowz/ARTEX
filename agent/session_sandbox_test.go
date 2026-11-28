@@ -44,17 +44,42 @@ func TestChatSessionSandboxRoutesBashAndRemovesTurn(t *testing.T) {
 	}
 }
 
-func TestMainAgentSessionSandboxRoutesBashAfterTaskContainer(t *testing.T) {
+// TestMainAgentSessionSandboxOwnsTheTurn covers what remains true after the main
+// agent became orchestration-only (no shell, upstream sync): a chat turn still
+// owns a session container, rooted at the main run dir, so its MCP stdio children
+// spawn there, and the container is removed with the turn. Nothing executes in
+// it on the main agent's behalf.
+func TestMainAgentSessionSandboxOwnsTheTurn(t *testing.T) {
 	f := newHookReachFixture(t)
 	probe := &sessionSandboxProbe{}
-	main := NewMainAgent(toolCallThenStop("Bash", `{"command":"printf main"}`), "test-model", f.workDir, nil, 0, 3)
+
+	prev := ToolAugment()
+	var root string
+	var sandboxed bool
+	SetToolAugment(func(ctx context.Context, agentKey string) ([]actool.CoreTool, DeferredInfo, func()) {
+		if agentKey == "mainagent" {
+			info := RunInfoFrom(ctx)
+			sandboxed = info.SessionSandbox && info.SessionSandboxKey != ""
+			root = info.SessionSandboxRoot
+		}
+		return nil, DeferredInfo{}, nil
+	})
+	t.Cleanup(func() { SetToolAugment(prev) })
+
+	main := NewMainAgent(toolCallThenStop("list_findings", `{}`), "test-model", f.workDir, nil, 0, 3)
 	main.SetSessionSandbox(probe)
 	if _, err := main.Chat(t.Context(), f.expID, 0, nil, f.ts, "goal", "run", passHooks{}, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	wantRoot := filepath.Join(f.workDir, "tasks", f.taskID, "main")
-	if probe.calls != 1 || probe.root != wantRoot || probe.dir != wantRoot || probe.command != "printf main" || probe.removed != probe.key {
-		t.Fatalf("main sandbox dispatch: %+v", probe)
+	if !sandboxed || root != wantRoot {
+		t.Fatalf("main turn did not own the session sandbox: sandboxed=%v root=%q want %q", sandboxed, root, wantRoot)
+	}
+	if probe.removed == "" {
+		t.Fatalf("the turn's session container was not removed: %+v", probe)
+	}
+	if probe.calls != 0 {
+		t.Fatalf("the main agent has no shell but executed a command: %+v", probe)
 	}
 }
 
