@@ -802,6 +802,9 @@ CREATE TABLE IF NOT EXISTS agents (
     builtin           BOOLEAN NOT NULL DEFAULT true,
     enabled           BOOLEAN NOT NULL DEFAULT true,
     llm_profile_id    BIGINT REFERENCES llm_profiles(id) ON DELETE SET NULL,
+    overseer_cadence_mode TEXT NOT NULL DEFAULT 'seconds' CHECK (overseer_cadence_mode IN ('seconds','rounds')),
+    overseer_interval_seconds INTEGER NOT NULL DEFAULT 90 CHECK (overseer_interval_seconds > 0),
+    overseer_interval_rounds INTEGER NOT NULL DEFAULT 5 CHECK (overseer_interval_rounds > 0),
     current_prompt_id BIGINT,
     max_turns         INTEGER NOT NULL DEFAULT 0,
     run_seconds       INTEGER NOT NULL DEFAULT 1200,
@@ -826,6 +829,9 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS trigger_max_parallel INTEGER NOT NUL
 -- per-agent LLM binding (agent-level default model): the column has been in the CREATE above since the first version;
 -- this ALTER is only a fallback for very old databases (idempotent).
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS llm_profile_id BIGINT REFERENCES llm_profiles(id) ON DELETE SET NULL;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS overseer_cadence_mode TEXT NOT NULL DEFAULT 'seconds' CHECK (overseer_cadence_mode IN ('seconds','rounds'));
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS overseer_interval_seconds INTEGER NOT NULL DEFAULT 90 CHECK (overseer_interval_seconds > 0);
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS overseer_interval_rounds INTEGER NOT NULL DEFAULT 5 CHECK (overseer_interval_rounds > 0);
 -- run_seconds per-run wall-clock default 600→1200: only the column default changes (affects future inserts); existing rows untouched.
 ALTER TABLE agents ALTER COLUMN run_seconds SET DEFAULT 1200;
 CREATE INDEX IF NOT EXISTS idx_agents_llm_profile ON agents(llm_profile_id) WHERE llm_profile_id IS NOT NULL;

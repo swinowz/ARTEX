@@ -100,9 +100,11 @@ type Engine struct {
 
 	bc *Broadcaster // live activity pub/sub (SSE)
 
-	started  sync.Map // taskID -> bool, so Run is idempotent per task
-	lastAct  sync.Map // taskID -> int64 unix, last planner/worker activity (heartbeat)
-	llmCalls sync.Map // taskID -> *int64, actual planner/worker/main-agent LLM calls
+	started         sync.Map // taskID -> bool, so Run is idempotent per task
+	lastAct         sync.Map // taskID -> int64 unix, last planner/worker activity (heartbeat)
+	llmCalls        sync.Map // taskID -> *int64, actual planner/worker/main-agent LLM calls
+	workerRounds    sync.Map // taskID -> *int64, completed Worker.Execute invocations
+	workerRoundWake sync.Map // taskID -> chan struct{}, edge notification for round cadence
 	// quiet-mode (#79): open-goal fingerprint recorded at the end of the last
 	// completed planning round, per task. Edge-triggered rounds are skipped
 	// while it is unchanged and work is still in flight.
@@ -516,6 +518,26 @@ func (e *Engine) ActiveLLMCalls(taskID string) int64 {
 		return atomic.LoadInt64(v.(*int64))
 	}
 	return 0
+}
+
+func (e *Engine) CompletedWorkerRounds(taskID string) int64 {
+	v, _ := e.workerRounds.LoadOrStore(taskID, new(int64))
+	return atomic.LoadInt64(v.(*int64))
+}
+
+func (e *Engine) WorkerRoundWake(taskID string) chan struct{} {
+	v, _ := e.workerRoundWake.LoadOrStore(taskID, make(chan struct{}, 1))
+	return v.(chan struct{})
+}
+
+func (e *Engine) workerRoundCompleted(taskID string) {
+	v, _ := e.workerRounds.LoadOrStore(taskID, new(int64))
+	atomic.AddInt64(v.(*int64), 1)
+	w := e.WorkerRoundWake(taskID)
+	select {
+	case w <- struct{}{}:
+	default:
+	}
 }
 
 func (e *Engine) touch(taskID string) { e.lastAct.Store(taskID, time.Now().Unix()) }
@@ -1341,6 +1363,7 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 		reason, wrote, err = worker.Execute(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, emit, e.m.enrich, t.NotifyFinding)
 	}
 	e.EndLLMCall(t.ID)
+	e.workerRoundCompleted(t.ID)
 	// model_error finish → a few extra reruns (retry after backoff). Retry only while
 	// the intent still belongs to this work and the task is not paused/killed/cancelled
 	// [and has not entered settlement]; otherwise yield to the matching branch (no retries during settlement, so backoff does not eat into other workers' graceful-settlement window).
@@ -1360,6 +1383,7 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 			reason, wrote, err = worker.Execute(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, emit, e.m.enrich, t.NotifyFinding)
 		}
 		e.EndLLMCall(t.ID)
+		e.workerRoundCompleted(t.ID)
 	}
 	stopHeartbeat() // no longer busy: the state writes below follow within the just-renewed claim
 	if meter != nil {

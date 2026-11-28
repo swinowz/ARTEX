@@ -563,18 +563,21 @@ func activityDTOs(in []db.Activity) []ActivityDTO {
 // ---- Agent (frontend "Agent") — string id ----
 
 type AgentDTO struct {
-	ID               string `json:"id"`
-	Key              string `json:"key"`
-	Name             string `json:"name"`
-	Description      string `json:"description"`
-	Role             string `json:"role"`
-	Builtin          bool   `json:"builtin"`
-	Enabled          bool   `json:"enabled"`
-	MaxTurns         int    `json:"max_turns"`
-	RunSecs          int    `json:"run_seconds"`
-	WebSearch        bool   `json:"web_search"`
-	InteractiveShell bool   `json:"interactive_shell"`
-	LLMProfileID     *int64 `json:"llm_profile_id"` // bound LLM profile; null = follow the task/global setting
+	ID                      string `json:"id"`
+	Key                     string `json:"key"`
+	Name                    string `json:"name"`
+	Description             string `json:"description"`
+	Role                    string `json:"role"`
+	Builtin                 bool   `json:"builtin"`
+	Enabled                 bool   `json:"enabled"`
+	MaxTurns                int    `json:"max_turns"`
+	RunSecs                 int    `json:"run_seconds"`
+	WebSearch               bool   `json:"web_search"`
+	InteractiveShell        bool   `json:"interactive_shell"`
+	LLMProfileID            *int64 `json:"llm_profile_id"` // bound LLM profile; null = follow the task/global setting
+	OverseerCadenceMode     string `json:"overseer_cadence_mode"`
+	OverseerIntervalSeconds int    `json:"overseer_interval_seconds"`
+	OverseerIntervalRounds  int    `json:"overseer_interval_rounds"`
 	// P3 post-trigger handling policy (only meaningful for custom agents).
 	TriggerRunMode     string `json:"trigger_run_mode"`
 	TriggerMergeMode   string `json:"trigger_merge_mode"`
@@ -587,21 +590,24 @@ type AgentDTO struct {
 
 func agentDTO(a *db.Agent) AgentDTO {
 	return AgentDTO{
-		ID:                 i64s(a.ID),
-		Key:                a.Key,
-		Name:               a.Name,
-		Description:        a.Description,
-		Role:               a.Role,
-		Builtin:            a.Builtin,
-		Enabled:            a.Enabled,
-		MaxTurns:           a.MaxTurns,
-		RunSecs:            a.RunSecs,
-		WebSearch:          a.WebSearch,
-		InteractiveShell:   a.InteractiveShell,
-		LLMProfileID:       a.LLMProfileID,
-		TriggerRunMode:     a.TriggerRunMode,
-		TriggerMergeMode:   a.TriggerMergeMode,
-		TriggerMaxParallel: a.TriggerMaxParallel,
+		ID:                      i64s(a.ID),
+		Key:                     a.Key,
+		Name:                    a.Name,
+		Description:             a.Description,
+		Role:                    a.Role,
+		Builtin:                 a.Builtin,
+		Enabled:                 a.Enabled,
+		MaxTurns:                a.MaxTurns,
+		RunSecs:                 a.RunSecs,
+		WebSearch:               a.WebSearch,
+		InteractiveShell:        a.InteractiveShell,
+		LLMProfileID:            a.LLMProfileID,
+		OverseerCadenceMode:     a.OverseerCadenceMode,
+		OverseerIntervalSeconds: a.OverseerIntervalSeconds,
+		OverseerIntervalRounds:  a.OverseerIntervalRounds,
+		TriggerRunMode:          a.TriggerRunMode,
+		TriggerMergeMode:        a.TriggerMergeMode,
+		TriggerMaxParallel:      a.TriggerMaxParallel,
 	}
 }
 

@@ -2769,5 +2769,10 @@
   "Overseer settings saved": "监督员设置已保存",
   "Supervises active tasks and guides workers. Disabled until you enable it here.": "监督活动任务并指导执行器。在此启用前保持关闭。",
   "Enable Overseer": "启用监督员",
-  "Overseer model profile": "监督员模型配置"
+  "Overseer model profile": "监督员模型配置",
+  "Review cadence": "审查频率",
+  "Seconds": "秒",
+  "Worker rounds": "工作轮次",
+  "Interval (seconds)": "间隔（秒）",
+  "Interval (rounds)": "间隔（轮次）"
 }

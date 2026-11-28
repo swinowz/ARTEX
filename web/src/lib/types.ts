@@ -1265,6 +1265,9 @@ export interface Agent {
   builtin: boolean;
   enabled: boolean;
   llm_profile_id?: number | null; // bound LLM profile; null/absent = follow task/session/global
+  overseer_cadence_mode?: "seconds" | "rounds";
+  overseer_interval_seconds?: number;
+  overseer_interval_rounds?: number;
   max_turns?: number; // 0 = unlimited
   run_seconds?: number; // worker per-run wall-clock cap (seconds); 0 = unlimited
   web_search?: boolean; // whether web search is enabled (gated by the global system switch)

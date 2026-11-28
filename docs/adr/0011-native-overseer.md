@@ -1,5 +1,7 @@
 # ADR-0011: Native task Overseer
 
+Cadence is configurable per Overseer agent: time mode reviews at a configured seconds interval (default 90 seconds), while rounds mode reviews after a configured number of completed `Worker.Execute` runs. The rounds signal is emitted when each worker execution returns, so idle tasks do not trigger reviews.
+
 Status: implemented on `issue-44-native-overseer` (2026-11-27) — #44.
 
 ## Context

@@ -58,6 +58,22 @@ func TestMgmtAPI(t *testing.T) {
 	if ags, _ := out["agents"].([]any); len(ags) < 5 {
 		t.Fatalf("want >=5 agents (seeded builtins), got %d", len(ags))
 	}
+	code, _ = do("PUT", "/api/agents/overseer/config", map[string]any{"overseer_cadence_mode": "rounds", "overseer_interval_seconds": 45, "overseer_interval_rounds": 4})
+	if code != 200 {
+		t.Fatalf("save Overseer cadence: %d", code)
+	}
+	_, agentList := do("GET", "/api/agents", nil)
+	for _, raw := range agentList["agents"].([]any) {
+		a := raw.(map[string]any)
+		if a["key"] == "overseer" && (a["overseer_cadence_mode"] != "rounds" || a["overseer_interval_seconds"] != float64(45) || a["overseer_interval_rounds"] != float64(4)) {
+			t.Fatalf("Overseer cadence did not roundtrip: %+v", a)
+		}
+	}
+	code, _ = do("PUT", "/api/agents/overseer/config", map[string]any{"overseer_cadence_mode": "rounds", "overseer_interval_rounds": 0})
+	if code != 400 {
+		t.Fatalf("zero cadence interval should be rejected, got %d", code)
+	}
+	_, _ = do("PUT", "/api/agents/overseer/config", map[string]any{"overseer_cadence_mode": "seconds", "overseer_interval_seconds": 90, "overseer_interval_rounds": 5})
 
 	// invalid template var → 400 (catalog whitelist)
 	code, out = do("PUT", "/api/agents/planner/prompt", map[string]string{"template": "hi {{.Nope}}"})

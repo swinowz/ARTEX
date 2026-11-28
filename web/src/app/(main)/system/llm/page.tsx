@@ -970,6 +970,9 @@ export default function LLMPage() {
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [overseerEnabled, setOverseerEnabled] = React.useState(false);
   const [overseerProfile, setOverseerProfile] = React.useState("__follow__");
+  const [overseerCadenceMode, setOverseerCadenceMode] = React.useState<"seconds" | "rounds">("seconds");
+  const [overseerIntervalSeconds, setOverseerIntervalSeconds] = React.useState(90);
+  const [overseerIntervalRounds, setOverseerIntervalRounds] = React.useState(5);
   const [overseerLoaded, setOverseerLoaded] = React.useState(false);
   const [savingOverseer, setSavingOverseer] = React.useState(false);
   const [pool, setPool] = React.useState<LLMPoolStatus | null>(null);
@@ -1006,6 +1009,9 @@ export default function LLMPage() {
       if (!agent) return;
       setOverseerEnabled(agent.enabled);
       setOverseerProfile(agent.llm_profile_id == null ? "__follow__" : String(agent.llm_profile_id));
+      setOverseerCadenceMode(agent.overseer_cadence_mode ?? "seconds");
+      setOverseerIntervalSeconds(agent.overseer_interval_seconds ?? 90);
+      setOverseerIntervalRounds(agent.overseer_interval_rounds ?? 5);
       setOverseerLoaded(true);
     } catch {
       toast.error(t("Could not load Overseer settings"));
@@ -1023,6 +1029,9 @@ export default function LLMPage() {
       await api.saveAgentConfig("overseer", {
         enabled: overseerEnabled,
         llm_profile_id: overseerProfile === "__follow__" ? null : Number(overseerProfile),
+        overseer_cadence_mode: overseerCadenceMode,
+        overseer_interval_seconds: overseerIntervalSeconds,
+        overseer_interval_rounds: overseerIntervalRounds,
       });
       await loadOverseer();
       toast.success(t("Overseer settings saved"));
@@ -1123,6 +1132,20 @@ export default function LLMPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="grid min-w-40 gap-1.5">
+                  <Label htmlFor="overseer-cadence-mode">{t("Review cadence")}</Label>
+                  <Select value={overseerCadenceMode} onValueChange={(v) => setOverseerCadenceMode(v as "seconds" | "rounds")} disabled={!overseerLoaded || savingOverseer}>
+                    <SelectTrigger id="overseer-cadence-mode"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="seconds">{t("Seconds")}</SelectItem>
+                      <SelectItem value="rounds">{t("Worker rounds")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid w-32 gap-1.5">
+                  <Label htmlFor="overseer-cadence-value">{overseerCadenceMode === "seconds" ? t("Interval (seconds)") : t("Interval (rounds)")}</Label>
+                  <Input id="overseer-cadence-value" type="number" min={1} step={1} value={overseerCadenceMode === "seconds" ? overseerIntervalSeconds : overseerIntervalRounds} disabled={!overseerLoaded || savingOverseer} onChange={(e) => (overseerCadenceMode === "seconds" ? setOverseerIntervalSeconds : setOverseerIntervalRounds)(Math.max(1, Number(e.target.value) || 1))} />
                 </div>
                 <Button size="sm" onClick={() => void saveOverseer()} disabled={!overseerLoaded || savingOverseer}>
                   {savingOverseer ? <Loader2Icon className="animate-spin" /> : <SaveIcon />}

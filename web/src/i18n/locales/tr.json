@@ -2769,5 +2769,10 @@
   "Overseer settings saved": "Gözetmen ayarları kaydedildi",
   "Supervises active tasks and guides workers. Disabled until you enable it here.": "Etkin görevleri denetler ve çalışanlara yol gösterir. Buradan etkinleştirene kadar kapalıdır.",
   "Enable Overseer": "Gözetmeni etkinleştir",
-  "Overseer model profile": "Gözetmen model profili"
+  "Overseer model profile": "Gözetmen model profili",
+  "Review cadence": "İnceleme sıklığı",
+  "Seconds": "Saniye",
+  "Worker rounds": "İşçi turları",
+  "Interval (seconds)": "Aralık (saniye)",
+  "Interval (rounds)": "Aralık (tur)"
 }

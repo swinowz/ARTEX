@@ -509,20 +509,23 @@ func (d *DB) SetActiveProfile(id int64) error {
 // ---------- Agents / prompts ----------
 
 type Agent struct {
-	ID               int64  `json:"id"`
-	Key              string `json:"key"`
-	Name             string `json:"name"`
-	Description      string `json:"description"`
-	Role             string `json:"role"`
-	Builtin          bool   `json:"builtin"`
-	Enabled          bool   `json:"enabled"`
-	LLMProfileID     *int64 `json:"llm_profile_id"`    // bound LLM profile; nil = follow the task/conversation pin, then fall back to the globally active one
-	MaxTurns         int    `json:"max_turns"`         // max turns per run; 0 = unlimited
-	RunSecs          int    `json:"run_seconds"`       // worker per-run wall-clock limit (seconds); 0 = unlimited
-	WebSearch        bool   `json:"web_search"`        // whether web search is enabled (gated by the system-wide switch)
-	InteractiveShell bool   `json:"interactive_shell"` // whether the interactive shell is enabled (persistent PTY session tool family)
-	WrapupPrompt     string `json:"wrapup_prompt"`     // wrap-up prompt (settlement prompt on timeout/step exhaustion); empty = use the built-in code default
-	WrapupMaxTurns   int    `json:"wrapup_max_turns"`  // the wrap-up phase's own turn budget; 0 = use the built-in code default (per agent)
+	ID                      int64  `json:"id"`
+	Key                     string `json:"key"`
+	Name                    string `json:"name"`
+	Description             string `json:"description"`
+	Role                    string `json:"role"`
+	Builtin                 bool   `json:"builtin"`
+	Enabled                 bool   `json:"enabled"`
+	LLMProfileID            *int64 `json:"llm_profile_id"` // bound LLM profile; nil = follow the task/conversation pin, then fall back to the globally active one
+	OverseerCadenceMode     string `json:"overseer_cadence_mode"`
+	OverseerIntervalSeconds int    `json:"overseer_interval_seconds"`
+	OverseerIntervalRounds  int    `json:"overseer_interval_rounds"`
+	MaxTurns                int    `json:"max_turns"`         // max turns per run; 0 = unlimited
+	RunSecs                 int    `json:"run_seconds"`       // worker per-run wall-clock limit (seconds); 0 = unlimited
+	WebSearch               bool   `json:"web_search"`        // whether web search is enabled (gated by the system-wide switch)
+	InteractiveShell        bool   `json:"interactive_shell"` // whether the interactive shell is enabled (persistent PTY session tool family)
+	WrapupPrompt            string `json:"wrapup_prompt"`     // wrap-up prompt (settlement prompt on timeout/step exhaustion); empty = use the built-in code default
+	WrapupMaxTurns          int    `json:"wrapup_max_turns"`  // the wrap-up phase's own turn budget; 0 = use the built-in code default (per agent)
 	// Task-level timeout wrap-up prompt (a separate set from per-run; only used by
 	// worker/planner); empty/0 = use the built-in code default.
 	TaskTimeoutWrapupPrompt   string `json:"task_timeout_wrapup_prompt"`
@@ -536,12 +539,12 @@ type Agent struct {
 	TriggerMaxParallel int    `json:"trigger_max_parallel"`
 }
 
-const agentCols = `id,key,name,COALESCE(description,''),role,builtin,enabled,COALESCE(max_turns,0),COALESCE(run_seconds,600),COALESCE(web_search,false),COALESCE(interactive_shell,false),COALESCE(wrapup_prompt,''),COALESCE(wrapup_max_turns,0),COALESCE(task_timeout_wrapup_prompt,''),COALESCE(task_timeout_wrapup_max_turns,0),COALESCE(trigger_run_mode,'serial'),COALESCE(trigger_merge_mode,'all'),COALESCE(trigger_max_parallel,5),llm_profile_id`
+const agentCols = `id,key,name,COALESCE(description,''),role,builtin,enabled,COALESCE(max_turns,0),COALESCE(run_seconds,600),COALESCE(web_search,false),COALESCE(interactive_shell,false),COALESCE(wrapup_prompt,''),COALESCE(wrapup_max_turns,0),COALESCE(task_timeout_wrapup_prompt,''),COALESCE(task_timeout_wrapup_max_turns,0),COALESCE(trigger_run_mode,'serial'),COALESCE(trigger_merge_mode,'all'),COALESCE(trigger_max_parallel,5),llm_profile_id,COALESCE(overseer_cadence_mode,'seconds'),COALESCE(overseer_interval_seconds,90),COALESCE(overseer_interval_rounds,5)`
 
 func scanAgent(sc interface{ Scan(...any) error }) (*Agent, error) {
 	var a Agent
 	var prof sql.NullInt64 // llm_profile_id is nullable: NULL when unbound
-	err := sc.Scan(&a.ID, &a.Key, &a.Name, &a.Description, &a.Role, &a.Builtin, &a.Enabled, &a.MaxTurns, &a.RunSecs, &a.WebSearch, &a.InteractiveShell, &a.WrapupPrompt, &a.WrapupMaxTurns, &a.TaskTimeoutWrapupPrompt, &a.TaskTimeoutWrapupMaxTurns, &a.TriggerRunMode, &a.TriggerMergeMode, &a.TriggerMaxParallel, &prof)
+	err := sc.Scan(&a.ID, &a.Key, &a.Name, &a.Description, &a.Role, &a.Builtin, &a.Enabled, &a.MaxTurns, &a.RunSecs, &a.WebSearch, &a.InteractiveShell, &a.WrapupPrompt, &a.WrapupMaxTurns, &a.TaskTimeoutWrapupPrompt, &a.TaskTimeoutWrapupMaxTurns, &a.TriggerRunMode, &a.TriggerMergeMode, &a.TriggerMaxParallel, &prof, &a.OverseerCadenceMode, &a.OverseerIntervalSeconds, &a.OverseerIntervalRounds)
 	if err == nil && prof.Valid {
 		v := prof.Int64
 		a.LLMProfileID = &v
@@ -656,6 +659,17 @@ func (d *DB) DeleteAgent(key string) error {
 // SetAgentEnabled controls whether a built-in or custom agent is active.
 func (d *DB) SetAgentEnabled(key string, enabled bool) error {
 	_, err := d.Exec(`UPDATE agents SET enabled=$2 WHERE key=$1`, key, enabled)
+	return err
+}
+
+func (d *DB) SetOverseerCadence(key, mode string, seconds, rounds int) error {
+	if mode != "seconds" && mode != "rounds" {
+		return fmt.Errorf("invalid overseer cadence mode %q", mode)
+	}
+	if seconds < 1 || rounds < 1 {
+		return fmt.Errorf("overseer cadence intervals must be positive")
+	}
+	_, err := d.Exec(`UPDATE agents SET overseer_cadence_mode=$1, overseer_interval_seconds=$2, overseer_interval_rounds=$3 WHERE key=$4`, mode, seconds, rounds, key)
 	return err
 }
 

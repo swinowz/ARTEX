@@ -16,7 +16,41 @@ import (
 	"github.com/Autumn-27/norma/transcript"
 )
 
-const overseerInterval = 90 * time.Second
+const overseerDefaultInterval = 90 * time.Second
+
+type overseerCadence struct {
+	Mode            string
+	Seconds, Rounds int
+}
+
+type overseerRoundGate struct{ last, pending int64 }
+
+func (g *overseerRoundGate) Observe(completed int64, interval int) bool {
+	g.pending += completed - g.last
+	g.last = completed
+	if interval < 1 || g.pending < int64(interval) {
+		return false
+	}
+	g.pending %= int64(interval)
+	return true
+}
+
+func normalizeOverseerCadence(mode string, seconds, rounds int) overseerCadence {
+	if mode != "seconds" && mode != "rounds" {
+		mode = "seconds"
+	}
+	if seconds < 1 {
+		seconds = 90
+	}
+	if rounds < 1 {
+		rounds = 5
+	}
+	return overseerCadence{Mode: mode, Seconds: seconds, Rounds: rounds}
+}
+
+func overseerCadenceDelay(c overseerCadence) time.Duration {
+	return time.Duration(c.Seconds) * time.Second
+}
 
 type overseerAction struct {
 	Type        string `json:"type"`
@@ -217,16 +251,56 @@ func hasOverseerFinding(items []overseerFinding, id int64) bool {
 }
 
 func (s *Server) overseerLoop(ctx context.Context, t *Task) {
-	ticker := time.NewTicker(overseerInterval)
-	defer ticker.Stop()
+	lastRounds := s.engine.CompletedWorkerRounds(t.ID)
+	pendingRounds := int64(0)
+	previousMode := ""
+	roundWake := s.engine.WorkerRoundWake(t.ID)
 	lastActions := map[string]struct{}{}
 	for {
+		role, err := s.m.pg.GetAgentByKey("overseer")
+		cadence := normalizeOverseerCadence("seconds", 90, 5)
+		if err != nil || role == nil {
+			log.Printf("[overseer] task %s cannot read cadence config; using 90-second default: %v", t.ID, err)
+		} else {
+			cadence = normalizeOverseerCadence(role.OverseerCadenceMode, role.OverseerIntervalSeconds, role.OverseerIntervalRounds)
+		}
+		if cadence.Mode != previousMode {
+			if cadence.Mode == "rounds" {
+				lastRounds = s.engine.CompletedWorkerRounds(t.ID)
+				pendingRounds = 0
+			}
+			previousMode = cadence.Mode
+		}
+		var timer *time.Timer
+		var trigger <-chan time.Time
+		if cadence.Mode == "seconds" {
+			timer = time.NewTimer(overseerCadenceDelay(cadence))
+			trigger = timer.C
+		}
+		var roundEvents <-chan struct{}
+		if cadence.Mode == "rounds" {
+			roundEvents = roundWake
+		}
 		select {
 		case <-ctx.Done():
+			if timer != nil {
+				timer.Stop()
+			}
 			return
-		case <-ticker.C:
+		case <-trigger:
+		case <-roundEvents:
+			if timer != nil {
+				timer.Stop()
+			}
+			completed := s.engine.CompletedWorkerRounds(t.ID)
+			gate := overseerRoundGate{last: lastRounds, pending: pendingRounds}
+			shouldReview := gate.Observe(completed, cadence.Rounds)
+			lastRounds, pendingRounds = gate.last, gate.pending
+			if cadence.Mode != "rounds" || !shouldReview {
+				continue
+			}
 		}
-		role, err := s.m.pg.GetAgentByKey("overseer")
+		role, err = s.m.pg.GetAgentByKey("overseer")
 		if err != nil || role == nil || !role.Enabled || s.engine.IsPaused(t.ID) || s.engine.IsDeleting(t.ID) || s.engine.isSettling(t.ID) || isTerminalStatus(t.lifecycleSnapshot().Status) {
 			continue
 		}

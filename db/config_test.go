@@ -9,6 +9,33 @@ import (
 	"time"
 )
 
+func TestOverseerCadenceRoundTrip(t *testing.T) {
+	d, err := Open(testDSN(t))
+	if err != nil {
+		SkipPGUnavailable(t, err)
+	}
+	defer d.Close()
+	if err := d.seedBuiltins(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetOverseerCadence("overseer", "rounds", 42, 3); err != nil {
+		t.Fatal(err)
+	}
+	ag, err := d.GetAgentByKey("overseer")
+	if err != nil || ag == nil || ag.OverseerCadenceMode != "rounds" || ag.OverseerIntervalSeconds != 42 || ag.OverseerIntervalRounds != 3 {
+		t.Fatalf("cadence roundtrip: %+v, %v", ag, err)
+	}
+	if err := d.SetOverseerCadence("overseer", "seconds", 90, 5); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetOverseerCadence("overseer", "unknown", 1, 1); err == nil {
+		t.Fatal("accepted invalid mode")
+	}
+	if err := d.SetOverseerCadence("overseer", "seconds", 0, 1); err == nil {
+		t.Fatal("accepted zero interval")
+	}
+}
+
 // TestPoolProfilesOrder pins the failover chain query: keyless profiles can't
 // serve a request and excluded ones aren't fallback targets, so neither belongs
 // in the chain; the rest come back by priority, highest first.

@@ -460,11 +460,14 @@ func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
 	// only trigger_* fields) leaves the untouched settings alone instead of resetting
 	// max_turns/run_seconds to 0.
 	var req struct {
-		Enabled          *bool `json:"enabled"`
-		MaxTurns         *int  `json:"max_turns"`
-		RunSeconds       *int  `json:"run_seconds"`
-		WebSearch        *bool `json:"web_search"`
-		InteractiveShell *bool `json:"interactive_shell"`
+		Enabled                 *bool   `json:"enabled"`
+		OverseerCadenceMode     *string `json:"overseer_cadence_mode"`
+		OverseerIntervalSeconds *int    `json:"overseer_interval_seconds"`
+		OverseerIntervalRounds  *int    `json:"overseer_interval_rounds"`
+		MaxTurns                *int    `json:"max_turns"`
+		RunSeconds              *int    `json:"run_seconds"`
+		WebSearch               *bool   `json:"web_search"`
+		InteractiveShell        *bool   `json:"interactive_shell"`
 		// llm_profile_id is tri-state: field omitted = leave unchanged; explicit null = unbind (follow task/global); number = bind that profile.
 		LLMProfileID json.RawMessage `json:"llm_profile_id"`
 		// P3 post-trigger handling policy (the three are optional as a group; providing any one writes the whole set; none provided = leave unchanged).
@@ -475,6 +478,30 @@ func (s *Server) pgSaveAgentConfig(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, 400, err.Error())
 		return
+	}
+	if req.OverseerCadenceMode != nil || req.OverseerIntervalSeconds != nil || req.OverseerIntervalRounds != nil {
+		mode, seconds, rounds := a.OverseerCadenceMode, a.OverseerIntervalSeconds, a.OverseerIntervalRounds
+		if req.OverseerCadenceMode != nil {
+			mode = *req.OverseerCadenceMode
+		}
+		if req.OverseerIntervalSeconds != nil {
+			seconds = *req.OverseerIntervalSeconds
+		}
+		if req.OverseerIntervalRounds != nil {
+			rounds = *req.OverseerIntervalRounds
+		}
+		if mode != "seconds" && mode != "rounds" {
+			writeErr(w, 400, "overseer_cadence_mode must be seconds or rounds")
+			return
+		}
+		if seconds < 1 || rounds < 1 {
+			writeErr(w, 400, "overseer cadence intervals must be positive")
+			return
+		}
+		if err := pg.SetOverseerCadence(a.Key, mode, seconds, rounds); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
 	}
 	profileChanged := false
 	if req.Enabled != nil {
