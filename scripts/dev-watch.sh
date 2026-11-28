@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Backend hot reload without extra tools: rebuild and restart the Go backend when a
-# .go file, go.mod or go.sum changes. Port defaults to 127.0.0.1:8790 so it does not
+# .go file, go.mod, go.sum, or an embedded asset (db/migrations/*.sql, db/schema.sql,
+# knowledge/data/*.json) changes. Port defaults to 127.0.0.1:8790 so it does not
 # clash with an SSH tunnel to a lab ARTEX (127.0.0.1:8787) or default dev.sh (8787/8788).
 #
 # Environment variables:
@@ -17,7 +18,9 @@ BIN="${TMPDIR_WATCH}/artex-dev"
 PID=""
 
 stamp() { find . \( -path ./web -o -path ./.git -o -path ./node_modules \) -prune -o \
-  \( -name '*.go' -o -name go.mod -o -name go.sum \) -print0 | xargs -0 stat -c '%Y %n' 2>/dev/null | sort | md5sum; }
+  \( -name '*.go' -o -name go.mod -o -name go.sum \
+     -o -path './db/migrations/*.sql' -o -path './db/schema.sql' -o -path './knowledge/data/*.json' \) \
+  -print0 | xargs -0 stat -c '%Y %n' 2>/dev/null | sort | md5sum; }
 
 start() {
   echo "[dev-watch] building…"
