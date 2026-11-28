@@ -1,4 +1,4 @@
-# ADR-0012: Intent progress in the activity stream
+# ADR-0013: Intent progress in the activity stream
 
 ## Decision
 
