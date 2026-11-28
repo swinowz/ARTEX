@@ -5,7 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { ArchiveIcon, ArrowLeftIcon, BrainIcon, CheckIcon, CircleAlertIcon, PauseIcon, PlayIcon } from "lucide-react";
+import { ArchiveIcon, ArrowLeftIcon, BrainIcon, CheckIcon, CircleAlertIcon, CopyPlusIcon, PauseIcon, PlayIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
@@ -229,6 +229,7 @@ function TaskDetailInner() {
   const [interceptPendingCount, setInterceptPendingCount] = React.useState(0);
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [archiving, setArchiving] = React.useState(false);
+  const [cloning, setCloning] = React.useState(false);
 
   React.useEffect(() => {
     api
@@ -316,6 +317,19 @@ function TaskDetailInner() {
     }
   }
 
+  async function cloneTask() {
+    if (!task || cloning) return;
+    setCloning(true);
+    try {
+      const cloned = await api.cloneTask(task.id);
+      toast.success(t("New task created from #{id}", { id: task.id }));
+      router.push(`/function/tasks/detail?id=${encodeURIComponent(cloned.id)}`);
+    } catch (error) {
+      toast.error(t("Could not continue in a new task: {error}", { error: (error as Error).message }));
+      setCloning(false);
+    }
+  }
+
   if (!task) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
@@ -386,6 +400,12 @@ function TaskDetailInner() {
           <Separator orientation="vertical" className="mx-1 hidden h-4 sm:block" />
           <TaskLLMControl task={task} profiles={profiles} onUpdated={load} />
           <StatusBadge domain={terminal ? "task" : "engine"} value={terminal ? task.status : engineMode} dot />
+          {terminal && (
+            <Button size="sm" variant="outline" disabled={cloning} onClick={() => void cloneTask()}>
+              {cloning ? <Spinner data-icon="inline-start" /> : <CopyPlusIcon data-icon="inline-start" />}
+              {t("Continue in a new task")}
+            </Button>
+          )}
           {canArchive ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>{archiveTrigger}</AlertDialogTrigger>
