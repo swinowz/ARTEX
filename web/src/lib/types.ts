@@ -648,6 +648,7 @@ export type ActivityKind =
   | "intent" // LLM-generated exploration objective leading a worker session (UI-synthesized)
   | "round" // planner round boundary marker (engine-emitted)
   | "usage" // live cumulative token usage (per model turn); not rendered
+  | "progress" // intent state transition or periodic heartbeat
   | "llm_switch" // automatic/manual task-level LLM switch
   | "llm_failover" // task-level provider switch / chain exhaustion audit event
   | "intercept_request"; // user-approval request from the intercept layer
@@ -673,6 +674,7 @@ export interface Activity {
   detail?: string;
   metadata?: {
     llm_transition?: LLMTransition;
+    state?: "waiting-model" | "executing" | "waiting-approval";
   };
   source_task_id?: string;
   inherited?: boolean;
