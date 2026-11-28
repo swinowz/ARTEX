@@ -2779,5 +2779,11 @@
   "Both": "两者",
   "Worker is the default for existing profiles; overseer-only profiles cannot run workers or become the global default.": "现有配置文件默认角色为 Worker；仅限 Overseer 的配置文件不能运行 Worker 或设为全局默认。",
   "Select an overseer profile": "选择 Overseer 配置文件",
-  "The Overseer must use a bound overseer or both profile; it cannot follow the task or global worker profile.": "Overseer 必须绑定角色为 Overseer 或 Both 的配置文件；不能跟随任务或全局 Worker 配置文件。"
+  "The Overseer must use a bound overseer or both profile; it cannot follow the task or global worker profile.": "Overseer 必须绑定角色为 Overseer 或 Both 的配置文件；不能跟随任务或全局 Worker 配置文件。",
+  "Waiting on model": "等待模型响应",
+  "Executing": "正在执行",
+  "Waiting for approval": "等待审批",
+  "New task created from #{id}": "已从任务 #{id} 创建新任务",
+  "Could not continue in a new task: {error}": "无法在新任务中继续：{error}",
+  "Continue in a new task": "在新任务中继续"
 }
